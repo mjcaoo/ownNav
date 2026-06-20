@@ -30,6 +30,110 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+type ParsedBookmark = {
+  title: string;
+  url: string;
+  folder: string;
+};
+
+function stripTags(value: string) {
+  return value.replace(/<[^>]*>/g, "");
+}
+
+function decodeHtml(value: string) {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+
+  return value.replace(/&(#\d+|#x[\da-f]+|[a-z]+);/gi, (match, entity: string) => {
+    const normalized = entity.toLowerCase();
+
+    if (normalized.startsWith("#x")) {
+      return String.fromCodePoint(Number.parseInt(normalized.slice(2), 16));
+    }
+
+    if (normalized.startsWith("#")) {
+      return String.fromCodePoint(Number.parseInt(normalized.slice(1), 10));
+    }
+
+    return namedEntities[normalized] ?? match;
+  });
+}
+
+function readHtmlAttribute(attributes: string, name: string) {
+  const match = attributes.match(new RegExp(name + "\\s*=\\s*([\"'])(.*?)\\1", "i"));
+  return match ? decodeHtml(match[2]).trim() : "";
+}
+
+function canImportUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function faviconForUrl(url: string) {
+  try {
+    const { hostname } = new URL(url);
+    return "https://www.google.com/s2/favicons?sz=64&domain=" + hostname;
+  } catch {
+    return null;
+  }
+}
+
+function parseBookmarkHtml(html: string): ParsedBookmark[] {
+  const bookmarks: ParsedBookmark[] = [];
+  const folderStack: string[] = [];
+  let pendingFolder: string | null = null;
+
+  for (const rawLine of html.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const folderMatch = line.match(/<H3\b[^>]*>(.*?)<\/H3>/i);
+
+    if (folderMatch) {
+      pendingFolder = decodeHtml(stripTags(folderMatch[1])).trim();
+    }
+
+    if (/<DL\b/i.test(line)) {
+      if (pendingFolder) {
+        folderStack.push(pendingFolder);
+        pendingFolder = null;
+      }
+      continue;
+    }
+
+    if (/<\/DL>/i.test(line)) {
+      if (folderStack.length > 0) {
+        folderStack.pop();
+      }
+      continue;
+    }
+
+    const linkMatch = line.match(/<A\b([^>]*)>(.*?)<\/A>/i);
+
+    if (!linkMatch) continue;
+
+    const url = readHtmlAttribute(linkMatch[1], "HREF");
+    const title = decodeHtml(stripTags(linkMatch[2])).trim() || url;
+
+    if (!url || !canImportUrl(url)) continue;
+
+    bookmarks.push({
+      title,
+      url,
+      folder: folderStack.at(-1) || "导入书签",
+    });
+  }
+
+  return bookmarks;
+}
 export async function loginAdmin(formData: FormData) {
   const password = textValue(formData, "password");
   const expectedPassword = process.env.ADMIN_PASSWORD || "admin123456";
@@ -197,6 +301,93 @@ export async function deleteLink(formData: FormData) {
   revalidatePath("/admin/links");
 }
 
+export async function importBookmarks(formData: FormData) {
+  const file = formData.get("bookmarksFile");
+
+  if (!(file instanceof File) || file.size === 0) {
+    redirect("/admin/links?importError=empty");
+  }
+
+  const html = await file.text();
+  const bookmarks = parseBookmarkHtml(html);
+
+  if (bookmarks.length === 0) {
+    redirect("/admin/links?importError=empty");
+  }
+
+  const data = await readNavigationData();
+  const now = new Date().toISOString();
+  const existingUrls = new Set(data.links.map((link) => link.url.trim().toLowerCase()));
+  const categoryByName = new Map(
+    data.categories.map((category) => [category.name.trim().toLowerCase(), category]),
+  );
+  let importedCount = 0;
+  let skippedCount = 0;
+  let nextCategorySortOrder =
+    data.categories.reduce((max, category) => Math.max(max, category.sortOrder), 0) + 1;
+  let nextLinkSortOrder =
+    data.links.reduce((max, link) => Math.max(max, link.sortOrder), 0) + 1;
+
+  for (const bookmark of bookmarks) {
+    const url = bookmark.url.trim();
+    const urlKey = url.toLowerCase();
+
+    if (existingUrls.has(urlKey)) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const categoryName = bookmark.folder || "导入书签";
+    const categoryKey = categoryName.trim().toLowerCase();
+    let category = categoryByName.get(categoryKey);
+
+    if (!category) {
+      category = {
+        id: createId("cat"),
+        name: categoryName,
+        slug: uniqueSlug(slugify(categoryName), data.categories),
+        icon: "🔖",
+        color: "#2563eb",
+        description: "从浏览器书签文件导入",
+        sortOrder: nextCategorySortOrder,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      nextCategorySortOrder += 1;
+      data.categories.push(category);
+      categoryByName.set(categoryKey, category);
+    }
+
+    data.links.push({
+      id: createId("link"),
+      title: bookmark.title,
+      url,
+      categoryId: category.id,
+      description: "从浏览器书签文件导入",
+      icon: faviconForUrl(url),
+      isPinned: false,
+      isActive: true,
+      sortOrder: nextLinkSortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    nextLinkSortOrder += 1;
+    importedCount += 1;
+    existingUrls.add(urlKey);
+  }
+
+  if (importedCount > 0) {
+    await writeNavigationData(data);
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/categories");
+    revalidatePath("/admin/links");
+  }
+
+  redirect("/admin/links?imported=" + importedCount + "&skipped=" + skippedCount);
+}
 export async function updateSettings(formData: FormData) {
   const data = await readNavigationData();
 

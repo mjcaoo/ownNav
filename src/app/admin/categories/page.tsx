@@ -3,6 +3,7 @@ import {
   deleteCategory,
   updateCategory,
 } from "@/app/admin/actions";
+import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { bySortAndCreatedAt, readNavigationData } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function CategoriesAdminPage() {
           </label>
           <label className="admin-label">
             图标
-            <input name="icon" defaultValue="📁" className="admin-input" />
+            <CategoryIconPicker defaultValue="📁" />
           </label>
           <label className="admin-label">
             颜色
@@ -106,13 +107,7 @@ export default async function CategoriesAdminPage() {
                   <label className="sr-only" htmlFor={`category-icon-${category.id}`}>
                     图标
                   </label>
-                  <input
-                    id={`category-icon-${category.id}`}
-                    name="icon"
-                    defaultValue={category.icon}
-                    className="admin-input h-9 text-center"
-                    aria-label="图标"
-                  />
+                  <CategoryIconPicker defaultValue={category.icon} compact />
                   <label className="sr-only" htmlFor={`category-color-${category.id}`}>
                     颜色
                   </label>

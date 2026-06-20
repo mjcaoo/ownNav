@@ -39,6 +39,7 @@ export function NavigationHome({
 }) {
   const [keyword, setKeyword] = useState("");
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "");
+  const [activeTags, setActiveTags] = useState<Record<string, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,6 +77,13 @@ export function NavigationHome({
     document
       .getElementById(category.slug || category.id)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function selectCategoryTag(categoryId: string, tag: string) {
+    setActiveTags((current) => ({
+      ...current,
+      [categoryId]: tag,
+    }));
   }
 
   return (
@@ -161,7 +169,19 @@ export function NavigationHome({
           </nav>
 
           <div className="mx-auto grid max-w-[1240px] gap-7 md:gap-8">
-            {visibleCategories.map((category) => (
+            {visibleCategories.map((category) => {
+              const tags = getCategoryTags(category.links);
+              const selectedTag = activeTags[category.id] ?? "all";
+              const activeTag =
+                selectedTag === "all" || tags.some((tag) => tag.name === selectedTag)
+                  ? selectedTag
+                  : "all";
+              const links =
+                activeTag === "all"
+                  ? category.links
+                  : category.links.filter((link) => getLinkTag(link) === activeTag);
+
+              return (
               <section
                 key={category.id}
                 id={category.slug || category.id}
@@ -174,19 +194,34 @@ export function NavigationHome({
 
                 <div className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.055)]">
                   <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
-                    <span className="rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => selectCategoryTag(category.id, "all")}
+                      className={subTagClass(activeTag === "all")}
+                    >
                       全部
-                    </span>
-                    {category.description ? (
+                    </button>
+                    {tags.map((tag) => (
+                      <button
+                        key={tag.name}
+                        type="button"
+                        onClick={() => selectCategoryTag(category.id, tag.name)}
+                        className={subTagClass(activeTag === tag.name)}
+                        title={tag.name + " · " + tag.count + " 个"}
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                    {tags.length === 0 && category.description ? (
                       <span className="truncate text-xs font-medium text-slate-400">
                         {category.description}
                       </span>
                     ) : null}
                   </div>
 
-                  {category.links.length > 0 ? (
+                  {links.length > 0 ? (
                     <div className="grid grid-cols-1 gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                      {category.links.map((link) => (
+                      {links.map((link) => (
                         <a
                           key={link.id}
                           href={link.url}
@@ -220,7 +255,8 @@ export function NavigationHome({
                   )}
                 </div>
               </section>
-            ))}
+              );
+            })}
 
             {visibleCategories.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-9 text-center text-sm font-medium text-slate-400">
@@ -234,6 +270,34 @@ export function NavigationHome({
   );
 }
 
+function getLinkTag(link: LinkItem) {
+  return link.description?.trim() ?? "";
+}
+
+function getCategoryTags(links: LinkItem[]) {
+  const counts = new Map<string, number>();
+
+  for (const link of links) {
+    const tag = getLinkTag(link);
+
+    if (!tag) continue;
+
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name, count]) => ({ name, count }));
+}
+
+function subTagClass(isActive: boolean) {
+  return [
+    "rounded-lg border px-2.5 py-1 text-xs font-bold transition",
+    isActive
+      ? "border-blue-100 bg-blue-50 text-slate-700"
+      : "border-transparent bg-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600",
+  ].join(" ");
+}
 function CategoryNavButton({
   category,
   isActive,
@@ -341,4 +405,3 @@ function compactUrl(url: string) {
     return url;
   }
 }
-

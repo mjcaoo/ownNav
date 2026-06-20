@@ -1,22 +1,63 @@
 import {
   createLink,
   deleteLink,
+  importBookmarks,
   updateLink,
 } from "@/app/admin/actions";
 import { getLinksWithCategory, readNavigationData, bySortAndCreatedAt } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-export default async function LinksAdminPage() {
+export default async function LinksAdminPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ imported?: string; skipped?: string; importError?: string }>;
+}) {
   const [data, links] = await Promise.all([readNavigationData(), getLinksWithCategory()]);
   const categories = [...data.categories].sort(bySortAndCreatedAt);
-
+  const params = await searchParams;
+  const importedCount = Number(params?.imported ?? 0);
+  const skippedCount = Number(params?.skipped ?? 0);
   return (
     <div className="grid gap-4">
       <header>
         <h1 className="text-2xl font-bold">链接管理</h1>
         <p className="mt-1 text-sm text-slate-500">添加、编辑、隐藏或删除导航链接。</p>
       </header>
+      <section className="admin-card border-blue-100 bg-blue-50/60">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">导入浏览器书签</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              支持 Chrome、Edge、Safari 等浏览器导出的 HTML 书签文件；会按书签文件夹自动创建分类，并按 URL 去重。
+            </p>
+          </div>
+          {params?.importError ? (
+            <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">
+              未识别到可导入链接
+            </span>
+          ) : null}
+          {params?.imported ? (
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+              已导入 {importedCount} 个，跳过 {skippedCount} 个重复链接
+            </span>
+          ) : null}
+        </div>
+
+        <form action={importBookmarks} className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
+          <input
+            name="bookmarksFile"
+            type="file"
+            required
+            accept=".html,.htm,text/html"
+            className="admin-input md:flex-1"
+          />
+          <button type="submit" className="admin-button whitespace-nowrap">
+            导入书签文件
+          </button>
+        </form>
+      </section>
+
 
       <section className="admin-card">
         <h2 className="text-lg font-bold">新增链接</h2>
