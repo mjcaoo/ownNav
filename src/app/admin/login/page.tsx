@@ -1,0 +1,47 @@
+import Link from "next/link";
+import { loginAdmin } from "../actions";
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#dbeafe,transparent_36%),linear-gradient(180deg,#f8fafc,#eef2ff)] px-5">
+      <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/85 p-8 shadow-2xl shadow-slate-200 backdrop-blur">
+        <Link href="/" className="text-sm font-semibold text-blue-600">
+          ← 返回首页
+        </Link>
+        <h1 className="mt-8 text-3xl font-bold text-slate-950">登录管理后台</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          默认密码是 <code className="rounded bg-slate-100 px-1.5 py-0.5">admin123456</code>，
+          建议在 <code className="rounded bg-slate-100 px-1.5 py-0.5">.env</code> 中修改。
+        </p>
+
+        {params?.error ? (
+          <div className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            密码不正确，请重新输入。
+          </div>
+        ) : null}
+
+        <form action={loginAdmin} className="mt-8 grid gap-4">
+          <label className="admin-label">
+            管理密码
+            <input
+              name="password"
+              type="password"
+              required
+              className="admin-input"
+              placeholder="请输入后台管理密码"
+            />
+          </label>
+          <button className="admin-button min-h-12" type="submit">
+            登录
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}

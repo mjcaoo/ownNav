@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.admin-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 0.75rem 1rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-input:focus {
+  border-color: rgb(96 165 250);
+  box-shadow: 0 0 0 4px rgb(219 234 254);
+}
+
+.admin-label {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(51 65 85);
+}
+
+.admin-card {
+  border-radius: 1.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.admin-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(37 99 235);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.admin-button:hover {
+  background: rgb(29 78 216);
+}
+
+.admin-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgb(51 65 85);
+}
