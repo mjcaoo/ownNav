@@ -7,14 +7,14 @@ export default async function SettingsAdminPage() {
   const settings = await getSettings();
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4">
       <header>
-        <h1 className="text-3xl font-bold">站点设置</h1>
-        <p className="mt-2 text-sm text-slate-500">修改前台标题、副标题、Logo 文本和主题颜色。</p>
+        <h1 className="text-2xl font-bold">站点设置</h1>
+        <p className="mt-1 text-sm text-slate-500">修改前台标题、副标题、Logo 文本和主题颜色。</p>
       </header>
 
       <section className="admin-card">
-        <form action={updateSettings} className="grid gap-4 md:grid-cols-2">
+        <form action={updateSettings} className="grid gap-3 md:grid-cols-2">
           <label className="admin-label">
             网站标题
             <input
@@ -40,7 +40,7 @@ export default async function SettingsAdminPage() {
               name="themeColor"
               type="color"
               defaultValue={settings?.themeColor ?? "#2563eb"}
-              className="admin-input h-12"
+              className="admin-input h-10"
             />
           </label>
           <label className="admin-label md:col-span-2">
@@ -48,7 +48,7 @@ export default async function SettingsAdminPage() {
             <textarea
               name="subtitle"
               defaultValue={settings?.subtitle ?? "整理常用网站、工具与资料"}
-              className="admin-input min-h-24"
+              className="admin-input min-h-20"
             />
           </label>
           <div className="md:col-span-2">
@@ -59,7 +59,7 @@ export default async function SettingsAdminPage() {
         </form>
       </section>
 
-      <section className="rounded-3xl border border-blue-100 bg-blue-50 p-5 text-sm leading-7 text-blue-800">
+      <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-800">
         后台登录密码目前通过项目根目录的 <code>.env</code> 文件中的
         <code> ADMIN_PASSWORD </code> 配置。修改后重启开发服务即可生效。
       </section>
