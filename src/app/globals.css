@@ -37,7 +37,7 @@ textarea {
 }
 
 .admin-input:focus {
-  border-color: rgb(96 165 250);
+  border-color: var(--admin-theme-color, rgb(96 165 250));
   box-shadow: 0 0 0 4px rgb(219 234 254);
 }
 
@@ -62,16 +62,16 @@ textarea {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgb(37 99 235);
+  background: var(--admin-theme-color, rgb(37 99 235));
   padding: 0.55rem 0.95rem;
   font-size: 0.8125rem;
   font-weight: 700;
   color: white;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
 
 .admin-button:hover {
-  background: rgb(29 78 216);
+  filter: brightness(0.92);
 }
 
 .admin-button-secondary {

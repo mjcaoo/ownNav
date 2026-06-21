@@ -1,6 +1,9 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { getSettings } from "@/lib/data";
 import { logoutAdmin } from "./actions";
+
+export const dynamic = "force-dynamic";
 
 const navItems = [
   { href: "/admin", label: "仪表盘" },
@@ -9,17 +12,22 @@ const navItems = [
   { href: "/admin/settings", label: "站点设置" },
 ];
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  const settings = await getSettings();
+  const adminStyle = {
+    "--admin-theme-color": settings.themeColor,
+  } as CSSProperties;
+
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
+    <main className="min-h-screen bg-slate-100 text-slate-900" style={adminStyle}>
       <aside className="fixed inset-y-0 left-0 hidden w-56 border-r border-slate-200 bg-white p-4 md:block">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 font-bold text-white">
-            N
+          <span className="grid h-9 w-9 place-items-center rounded-xl font-bold text-white" style={{ backgroundColor: settings.themeColor }}>
+            {settings.logoText}
           </span>
-          <span>
-            <span className="block text-xs text-slate-500">OneNav MVP</span>
-            <span className="font-semibold">管理后台</span>
+          <span className="min-w-0">
+            <span className="block truncate text-xs text-slate-500">{settings.subtitle}</span>
+            <span className="block truncate font-semibold">{settings.title} 后台</span>
           </span>
         </Link>
 
@@ -28,7 +36,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-xl px-3 py-2 text-[13px] font-semibold text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
+              className="rounded-xl px-3 py-2 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-[var(--admin-theme-color)]"
             >
               {item.label}
             </Link>
@@ -44,9 +52,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       <div className="md:pl-56">
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:hidden">
-          <div className="flex items-center justify-between">
-            <Link href="/admin" className="font-semibold">
-              管理后台
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/admin" className="flex min-w-0 items-center gap-2 font-semibold">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: settings.themeColor }}>
+                {settings.logoText}
+              </span>
+              <span className="truncate">{settings.title} 后台</span>
             </Link>
             <form action={logoutAdmin}>
               <button className="text-sm font-semibold text-slate-500" type="submit">
@@ -67,7 +78,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </nav>
         </header>
 
-        <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-6">{children}</div>
+        <div className="mx-auto max-w-[1500px] px-4 py-5 md:px-6 md:py-6">{children}</div>
       </div>
     </main>
   );
