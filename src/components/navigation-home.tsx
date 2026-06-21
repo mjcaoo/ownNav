@@ -171,7 +171,7 @@ export function NavigationHome({
             />
           </label>
 
-          <nav className="mb-5 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+          <nav className="scrollbar-none scroll-fade-right mb-5 flex gap-2 overflow-x-auto pb-1 lg:hidden">
             {categories.map((category) => (
               <CategoryNavButton
                 key={category.id}

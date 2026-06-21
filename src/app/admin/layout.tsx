@@ -26,8 +26,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             {settings.logoText}
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-xs text-slate-500">{settings.subtitle}</span>
-            <span className="block truncate font-semibold">{settings.title} 后台</span>
+            <span className="block truncate font-semibold">{settings.title}</span>
+            <span className="block truncate text-xs text-slate-500">管理后台</span>
           </span>
         </Link>
 
@@ -57,7 +57,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: settings.themeColor }}>
                 {settings.logoText}
               </span>
-              <span className="truncate">{settings.title} 后台</span>
+              <span className="truncate">{settings.title}</span>
             </Link>
             <form action={logoutAdmin}>
               <button className="text-sm font-semibold text-slate-500" type="submit">
@@ -65,7 +65,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
               </button>
             </form>
           </div>
-          <nav className="mt-2 flex gap-1.5 overflow-x-auto">
+          <nav className="scrollbar-none scroll-fade-right mt-2 flex gap-1.5 overflow-x-auto">
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -78,7 +78,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </nav>
         </header>
 
-        <div className="mx-auto max-w-[1500px] px-4 py-5 md:px-6 md:py-6">{children}</div>
+        <div className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-6">{children}</div>
       </div>
     </main>
   );
