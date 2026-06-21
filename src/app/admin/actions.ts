@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pinyin } from "pinyin-pro";
 import { ADMIN_COOKIE, createAdminToken, verifyAdminPassword } from "@/lib/auth";
-import type { Category, NavLink } from "@/lib/data";
+import { checkLoginRateLimit, clearLoginRateLimit } from "@/lib/rate-limit";
+import type { Category, NavLink, NavigationData } from "@/lib/data";
 import {
   bulkInsertCategories,
   bulkInsertLinks,
@@ -15,6 +16,7 @@ import {
   insertCategory,
   insertLink,
   readNavigationData,
+  resetAllData,
   uniqueSlug,
   updateCategory as updateCategoryDb,
   updateLink as updateLinkDb,
@@ -46,14 +48,18 @@ function validateUrl(value: string) {
   }
 }
 
-type ActionResult = { ok: true } | { ok: false; error: string };
-
-function errorResult(message: string): ActionResult {
-  return { ok: false, error: message };
-}
-
-function successResult(): ActionResult {
-  return { ok: true };
+/**
+ * 检测 Next.js redirect() 抛出的内部异常
+ * redirect() 通过 throw 实现，不应被业务 catch 吞掉
+ */
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as Record<string, unknown>).digest === "string" &&
+    (error as Record<string, string>).digest.startsWith("NEXT_REDIRECT")
+  );
 }
 
 function slugify(value: string) {
@@ -120,6 +126,24 @@ function canImportUrl(url: string) {
     return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+/**
+ * 归一化 URL 用于去重比较
+ * - 统一小写 hostname
+ * - 移除路径末尾 /
+ * - 忽略协议差异（http vs https）
+ * - 去掉 www 前缀
+ */
+function normalizeImportUrl(url: string): string {
+  try {
+    const parsed = new URL(url.toLowerCase());
+    const hostname = parsed.hostname.replace(/^www\./, "");
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return hostname + pathname;
+  } catch {
+    return url.toLowerCase().trim();
   }
 }
 
@@ -216,9 +240,24 @@ function parseBookmarkHtml(html: string): ParsedBookmark[] {
 export async function loginAdmin(formData: FormData) {
   const password = textValue(formData, "password");
 
+  // 速率限制：基于客户端 IP
+  const headersList = await headers();
+  const clientIp =
+    headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    headersList.get("x-real-ip") ||
+    "unknown";
+
+  const rateLimit = checkLoginRateLimit(clientIp);
+  if (!rateLimit.ok) {
+    redirect("/admin/login?error=rate_limit");
+  }
+
   if (!verifyAdminPassword(password)) {
     redirect("/admin/login?error=1");
   }
+
+  // 登录成功，清除限流记录
+  clearLoginRateLimit(clientIp);
 
   const isProduction = process.env.NODE_ENV === "production";
   const cookieStore = await cookies();
@@ -239,14 +278,15 @@ export async function logoutAdmin() {
   redirect("/admin/login");
 }
 
-export async function createCategory(formData: FormData): Promise<ActionResult> {
+export async function createCategory(formData: FormData): Promise<void> {
   try {
     const name = textValue(formData, "name");
     const rawSlug = textValue(formData, "slug");
     const parentId = textValue(formData, "parentId") || null;
 
-    if (!name) return errorResult("分类名称不能为空");
-    if (name.length > MAX_NAME_LENGTH) return errorResult(`分类名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
+    if (!name || name.length > MAX_NAME_LENGTH) {
+      redirect("/admin/categories?error=name");
+    }
 
     const data = await readNavigationData();
     const now = new Date().toISOString();
@@ -266,26 +306,27 @@ export async function createCategory(formData: FormData): Promise<ActionResult> 
 
     revalidatePath("/");
     revalidatePath("/admin/categories");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("createCategory failed:", error);
-    return errorResult("创建分类失败，请稍后重试");
+    redirect("/admin/categories?error=failed");
   }
 }
 
-export async function updateCategory(formData: FormData): Promise<ActionResult> {
+export async function updateCategory(formData: FormData): Promise<void> {
   try {
     const id = textValue(formData, "id");
     const name = textValue(formData, "name");
     const rawSlug = textValue(formData, "slug");
     const parentId = textValue(formData, "parentId") || null;
 
-    if (!id || !name) return errorResult("分类 ID 和名称不能为空");
-    if (name.length > MAX_NAME_LENGTH) return errorResult(`分类名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
+    if (!id || !name || name.length > MAX_NAME_LENGTH) {
+      redirect("/admin/categories?error=invalid");
+    }
 
     const data = await readNavigationData();
     const existing = data.categories.find((cat) => cat.id === id);
-    if (!existing) return errorResult("分类不存在或已被删除");
+    if (!existing) redirect("/admin/categories?error=notfound");
 
     updateCategoryDb({
       ...existing,
@@ -301,40 +342,39 @@ export async function updateCategory(formData: FormData): Promise<ActionResult> 
 
     revalidatePath("/");
     revalidatePath("/admin/categories");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("updateCategory failed:", error);
-    return errorResult("更新分类失败，请稍后重试");
+    redirect("/admin/categories?error=failed");
   }
 }
 
-export async function deleteCategory(formData: FormData): Promise<ActionResult> {
+export async function deleteCategory(formData: FormData): Promise<void> {
   try {
     const id = textValue(formData, "id");
-    if (!id) return errorResult("分类 ID 不能为空");
+    if (!id) redirect("/admin/categories?error=invalid");
 
     deleteCategoryById(id);
     revalidatePath("/");
     revalidatePath("/admin");
     revalidatePath("/admin/categories");
     revalidatePath("/admin/links");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("deleteCategory failed:", error);
-    return errorResult("删除分类失败，请稍后重试");
+    redirect("/admin/categories?error=failed");
   }
 }
 
-export async function createLink(formData: FormData): Promise<ActionResult> {
+export async function createLink(formData: FormData): Promise<void> {
   try {
     const title = textValue(formData, "title");
     const url = textValue(formData, "url");
     const categoryId = textValue(formData, "categoryId");
 
-    if (!title || !url || !categoryId) return errorResult("网站名称、URL 和分类不能为空");
-    if (title.length > MAX_NAME_LENGTH) return errorResult(`网站名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
-    if (url.length > MAX_URL_LENGTH) return errorResult(`URL 不能超过 ${MAX_URL_LENGTH} 个字符`);
-    if (!validateUrl(url)) return errorResult("请输入有效的 http:// 或 https:// 链接");
+    if (!title || !url || !categoryId) redirect("/admin/links?error=invalid");
+    if (title.length > MAX_NAME_LENGTH || url.length > MAX_URL_LENGTH) redirect("/admin/links?error=invalid");
+    if (!validateUrl(url)) redirect("/admin/links?error=url");
 
     const now = new Date().toISOString();
 
@@ -355,28 +395,27 @@ export async function createLink(formData: FormData): Promise<ActionResult> {
     revalidatePath("/");
     revalidatePath("/admin");
     revalidatePath("/admin/links");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("createLink failed:", error);
-    return errorResult("创建链接失败，请稍后重试");
+    redirect("/admin/links?error=failed");
   }
 }
 
-export async function updateLink(formData: FormData): Promise<ActionResult> {
+export async function updateLink(formData: FormData): Promise<void> {
   try {
     const id = textValue(formData, "id");
     const title = textValue(formData, "title");
     const url = textValue(formData, "url");
     const categoryId = textValue(formData, "categoryId");
 
-    if (!id || !title || !url || !categoryId) return errorResult("ID、网站名称、URL 和分类不能为空");
-    if (title.length > MAX_NAME_LENGTH) return errorResult(`网站名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
-    if (url.length > MAX_URL_LENGTH) return errorResult(`URL 不能超过 ${MAX_URL_LENGTH} 个字符`);
-    if (!validateUrl(url)) return errorResult("请输入有效的 http:// 或 https:// 链接");
+    if (!id || !title || !url || !categoryId) redirect("/admin/links?error=invalid");
+    if (title.length > MAX_NAME_LENGTH || url.length > MAX_URL_LENGTH) redirect("/admin/links?error=invalid");
+    if (!validateUrl(url)) redirect("/admin/links?error=url");
 
     const data = await readNavigationData();
     const existing = data.links.find((link) => link.id === id);
-    if (!existing) return errorResult("链接不存在或已被删除");
+    if (!existing) redirect("/admin/links?error=notfound");
 
     updateLinkDb({
       ...existing,
@@ -394,26 +433,26 @@ export async function updateLink(formData: FormData): Promise<ActionResult> {
     revalidatePath("/");
     revalidatePath("/admin");
     revalidatePath("/admin/links");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("updateLink failed:", error);
-    return errorResult("更新链接失败，请稍后重试");
+    redirect("/admin/links?error=failed");
   }
 }
 
-export async function deleteLink(formData: FormData): Promise<ActionResult> {
+export async function deleteLink(formData: FormData): Promise<void> {
   try {
     const id = textValue(formData, "id");
-    if (!id) return errorResult("链接 ID 不能为空");
+    if (!id) redirect("/admin/links?error=invalid");
 
     deleteLinkById(id);
     revalidatePath("/");
     revalidatePath("/admin");
     revalidatePath("/admin/links");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("deleteLink failed:", error);
-    return errorResult("删除链接失败，请稍后重试");
+    redirect("/admin/links?error=failed");
   }
 }
 
@@ -434,7 +473,7 @@ export async function importBookmarks(formData: FormData) {
 
     const data = await readNavigationData();
     const now = new Date().toISOString();
-    const existingUrls = new Set(data.links.map((link) => link.url.trim().toLowerCase()));
+    const existingUrls = new Set(data.links.map((link) => normalizeImportUrl(link.url)));
     const categoryByKey = new Map(
       data.categories.map((category) => [categoryImportKey(category.parentId, category.name), category]),
     );
@@ -477,7 +516,7 @@ export async function importBookmarks(formData: FormData) {
 
     for (const bookmark of bookmarks) {
       const url = bookmark.url.trim();
-      const urlKey = url.toLowerCase();
+      const urlKey = normalizeImportUrl(url);
 
       if (existingUrls.has(urlKey)) {
         skippedCount += 1;
@@ -520,6 +559,8 @@ export async function importBookmarks(formData: FormData) {
 
     redirect("/admin/links?imported=" + importedCount + "&skipped=" + skippedCount);
   } catch (error) {
+    // redirect() 内部抛出异常，不要捕获它
+    if (isNextRedirect(error)) throw error;
     console.error("importBookmarks failed:", error);
     redirect("/admin/links?importError=failed");
   }
@@ -528,7 +569,7 @@ export async function importBookmarks(formData: FormData) {
 function categoryImportKey(parentId: string | null, name: string) {
   return (parentId ?? "root") + "::" + name.trim().toLowerCase();
 }
-export async function updateSettings(formData: FormData): Promise<ActionResult> {
+export async function updateSettings(formData: FormData): Promise<void> {
   try {
     upsertSetting({
       id: "site",
@@ -541,9 +582,120 @@ export async function updateSettings(formData: FormData): Promise<ActionResult> 
     revalidatePath("/");
     revalidatePath("/admin", "layout");
     revalidatePath("/admin/settings");
-    return successResult();
   } catch (error) {
+    if (isNextRedirect(error)) throw error;
     console.error("updateSettings failed:", error);
-    return errorResult("更新设置失败，请稍后重试");
+    redirect("/admin/settings?error=failed");
+  }
+}
+
+type JsonImportResult =
+  | { ok: false; error: string }
+  | { ok: true; categoryCount: number; linkCount: number };
+
+export async function restoreFromJson(formData: FormData): Promise<JsonImportResult> {
+  try {
+    const file = formData.get("restoreFile");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "请选择有效的 JSON 备份文件" };
+    }
+
+    const text = await file.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, error: "JSON 格式无效，请检查文件内容" };
+    }
+
+    if (typeof parsed !== "object" || parsed === null) {
+      return { ok: false, error: "JSON 文件结构无效：顶层不是对象" };
+    }
+
+    const data = parsed as Record<string, unknown>;
+
+    // 验证 settings
+    if (!data.settings || typeof data.settings !== "object") {
+      return { ok: false, error: "JSON 缺少 settings 字段" };
+    }
+
+    const settings = data.settings as Record<string, unknown>;
+    if (!settings.title || !settings.id || !settings.themeColor) {
+      return { ok: false, error: "settings 字段不完整，缺少 title/id/themeColor" };
+    }
+
+    // 验证 categories
+    if (!Array.isArray(data.categories)) {
+      return { ok: false, error: "categories 必须是数组" };
+    }
+
+    // 验证 links
+    if (!Array.isArray(data.links)) {
+      return { ok: false, error: "links 必须是数组" };
+    }
+
+    const navigationData: NavigationData = {
+      settings: {
+        id: String(settings.id),
+        title: String(settings.title),
+        subtitle: String(settings.subtitle ?? ""),
+        logoText: String(settings.logoText ?? "N"),
+        themeColor: String(settings.themeColor),
+      },
+      categories: (data.categories as unknown[]).map((cat: unknown) => {
+        const c = cat as Record<string, unknown>;
+        return {
+          id: String(c.id ?? ""),
+          name: String(c.name ?? ""),
+          slug: String(c.slug ?? ""),
+          icon: String(c.icon ?? "📁"),
+          color: String(c.color ?? "#2563eb"),
+          description: c.description ? String(c.description) : null,
+          parentId: c.parentId ? String(c.parentId) : null,
+          sortOrder: Number(c.sortOrder ?? 0),
+          createdAt: String(c.createdAt ?? new Date().toISOString()),
+          updatedAt: String(c.updatedAt ?? new Date().toISOString()),
+        };
+      }),
+      links: (data.links as unknown[]).map((link: unknown) => {
+        const l = link as Record<string, unknown>;
+        return {
+          id: String(l.id ?? ""),
+          title: String(l.title ?? ""),
+          url: String(l.url ?? ""),
+          description: l.description ? String(l.description) : null,
+          icon: l.icon ? String(l.icon) : null,
+          isPinned: Boolean(l.isPinned),
+          isActive: l.isActive !== false,
+          sortOrder: Number(l.sortOrder ?? 0),
+          categoryId: String(l.categoryId ?? ""),
+          createdAt: String(l.createdAt ?? new Date().toISOString()),
+          updatedAt: String(l.updatedAt ?? new Date().toISOString()),
+        };
+      }),
+    };
+
+    if (navigationData.categories.length === 0 && navigationData.links.length === 0) {
+      return { ok: false, error: "备份文件中没有分类和链接数据" };
+    }
+
+    resetAllData(navigationData);
+
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin", "layout");
+    revalidatePath("/admin/categories");
+    revalidatePath("/admin/links");
+    revalidatePath("/admin/settings");
+
+    return {
+      ok: true,
+      categoryCount: navigationData.categories.length,
+      linkCount: navigationData.links.length,
+    };
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    console.error("restoreFromJson failed:", error);
+    return { ok: false, error: "恢复失败，请稍后重试" };
   }
 }
