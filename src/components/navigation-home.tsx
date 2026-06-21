@@ -21,6 +21,8 @@ type LinkItem = {
   categoryId: string;
 };
 
+const SYSTEM_DESCRIPTIONS = new Set(["从浏览器书签文件导入"]);
+
 type CategoryItem = {
   id: string;
   name: string;
@@ -265,7 +267,7 @@ export function NavigationHome({
                               ) : null}
                             </span>
                             <span className="mt-0.5 block truncate text-[11px] font-medium leading-4 text-slate-400">
-                              {link.description || compactUrl(link.url)}
+                              {displayLinkDescription(link)}
                             </span>
                           </span>
                         </a>
@@ -294,7 +296,15 @@ export function NavigationHome({
 }
 
 function getLinkTag(link: LinkItem) {
-  return link.description?.trim() ?? "";
+  const description = link.description?.trim() ?? "";
+
+  if (SYSTEM_DESCRIPTIONS.has(description)) return "";
+
+  return description;
+}
+
+function displayLinkDescription(link: LinkItem) {
+  return getLinkTag(link) || compactUrl(link.url);
 }
 
 function getCategoryTags(links: LinkItem[]) {
