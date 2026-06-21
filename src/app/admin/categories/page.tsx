@@ -5,7 +5,7 @@ import {
 } from "@/app/admin/actions";
 import { AdminModal } from "@/components/admin-modal";
 import { AdminPagination, normalizePageParam, pageCount, pageSlice } from "@/components/admin-pagination";
-import { CategoryIconPicker } from "@/components/category-icon-picker";
+import { EmojiPicker } from "@/components/emoji-picker";
 import { bySortAndCreatedAt, readNavigationData, type Category } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +68,7 @@ export default async function CategoriesAdminPage({
             </label>
             <label className="admin-label">
               图标
-              <CategoryIconPicker defaultValue="📁" />
+              <EmojiPicker defaultValue="📁" />
             </label>
             <label className="admin-label">
               颜色
@@ -161,12 +161,9 @@ export default async function CategoriesAdminPage({
                         </option>
                       ))}
                   </select>
-                  <input
-                    name="icon"
-                    defaultValue={category.icon}
-                    className="admin-input h-9 text-center"
-                    aria-label="图标"
-                  />
+                  <div className="flex h-9 items-center">
+                    <EmojiPicker name="icon" defaultValue={category.icon} compact />
+                  </div>
                   <input
                     name="color"
                     type="color"
