@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { pinyin } from "pinyin-pro";
 import { ADMIN_COOKIE } from "@/lib/auth";
 import {
   createId,
@@ -21,7 +22,14 @@ function intValue(formData: FormData, key: string) {
 }
 
 function slugify(value: string) {
-  return value
+  const pinyinValue = pinyin(value, {
+    toneType: "none",
+    type: "array",
+    nonZh: "consecutive",
+    v: true,
+  }).join(" ");
+
+  return pinyinValue
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "-")
@@ -89,6 +97,38 @@ function faviconForUrl(url: string) {
   }
 }
 
+const BROWSER_BOOKMARK_ROOTS = new Set([
+  "书签栏",
+  "收藏夹栏",
+  "个人收藏栏",
+  "收藏夹",
+  "bookmarks bar",
+  "favorites bar",
+  "书签菜单",
+  "bookmarks menu",
+  "其他书签",
+  "other bookmarks",
+  "移动设备书签",
+  "mobile bookmarks",
+]);
+
+function normalizeBookmarkRootName(name: string) {
+  return name.trim().toLowerCase();
+}
+
+function bookmarkCategoryPath(folderStack: string[]) {
+  const normalized = folderStack.map((folder) => folder.trim()).filter(Boolean);
+
+  while (
+    normalized.length > 0 &&
+    BROWSER_BOOKMARK_ROOTS.has(normalizeBookmarkRootName(normalized[0]))
+  ) {
+    normalized.shift();
+  }
+
+  return normalized;
+}
+
 function parseBookmarkHtml(html: string): ParsedBookmark[] {
   const bookmarks: ParsedBookmark[] = [];
   const folderStack: string[] = [];
@@ -126,11 +166,13 @@ function parseBookmarkHtml(html: string): ParsedBookmark[] {
 
     if (!url || !canImportUrl(url)) continue;
 
+    const categoryPath = bookmarkCategoryPath(folderStack);
+
     bookmarks.push({
       title,
       url,
-      folder: folderStack.at(-1) || "导入书签",
-      parentFolder: folderStack.length > 1 ? folderStack.at(-2) ?? null : null,
+      folder: categoryPath.at(-1) || "导入书签",
+      parentFolder: categoryPath.length > 1 ? categoryPath.at(-2) ?? null : null,
     });
   }
 
@@ -353,7 +395,7 @@ export async function importBookmarks(formData: FormData) {
       slug: uniqueSlug(slugify(parentId ? parentId + "-" + name : name), data.categories),
       icon: "🔖",
       color: "#2563eb",
-      description: "从浏览器书签文件导入",
+      description: null,
       parentId,
       sortOrder: nextCategorySortOrder,
       createdAt: now,
@@ -386,7 +428,7 @@ export async function importBookmarks(formData: FormData) {
       title: bookmark.title,
       url,
       categoryId: category.id,
-      description: "从浏览器书签文件导入",
+      description: null,
       icon: faviconForUrl(url),
       isPinned: false,
       isActive: true,
@@ -428,5 +470,6 @@ export async function updateSettings(formData: FormData) {
   await writeNavigationData(data);
 
   revalidatePath("/");
+  revalidatePath("/admin", "layout");
   revalidatePath("/admin/settings");
 }
