@@ -2,7 +2,7 @@ import "server-only";
 
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 export type SiteSetting = {
@@ -62,7 +62,6 @@ type LinkRow = Omit<NavLink, "isPinned" | "isActive"> & {
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "navigation.sqlite");
-const jsonSeedPath = path.join(dataDir, "navigation.json");
 
 const defaultData: NavigationData = {
   settings: {
@@ -279,26 +278,10 @@ function seedDatabaseIfEmpty(db: Database.Database) {
   const settingsCount = (db.prepare("SELECT COUNT(*) AS count FROM settings").get() as {
     count: number;
   }).count;
-  const categoryCount = (db.prepare("SELECT COUNT(*) AS count FROM categories").get() as {
-    count: number;
-  }).count;
-  const linkCount = (db.prepare("SELECT COUNT(*) AS count FROM links").get() as {
-    count: number;
-  }).count;
 
-  if (settingsCount + categoryCount + linkCount > 0) return;
+  if (settingsCount > 0) return;
 
-  writeNavigationDataToDb(db, normalizeNavigationData(readJsonSeed() ?? defaultData));
-}
-
-function readJsonSeed() {
-  if (!existsSync(jsonSeedPath)) return null;
-
-  try {
-    return JSON.parse(readFileSync(jsonSeedPath, "utf-8")) as NavigationData;
-  } catch {
-    return null;
-  }
+  writeNavigationDataToDb(db, normalizeNavigationData(defaultData));
 }
 
 function normalizeNavigationData(data: NavigationData): NavigationData {
