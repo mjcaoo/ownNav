@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { getSettings } from "@/lib/data";
 import { logoutAdmin } from "./actions";

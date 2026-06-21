@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ADMIN_COOKIE } from "@/lib/auth";
+import { ADMIN_COOKIE, verifyAdminToken } from "@/lib/auth";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -8,7 +8,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (request.cookies.get(ADMIN_COOKIE)?.value === "1") {
+  const token = request.cookies.get(ADMIN_COOKIE)?.value;
+  if (token && verifyAdminToken(token)) {
     return NextResponse.next();
   }
 

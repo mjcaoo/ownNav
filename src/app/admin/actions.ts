@@ -4,12 +4,21 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pinyin } from "pinyin-pro";
-import { ADMIN_COOKIE } from "@/lib/auth";
+import { ADMIN_COOKIE, createAdminToken, verifyAdminPassword } from "@/lib/auth";
+import type { Category, NavLink } from "@/lib/data";
 import {
+  bulkInsertCategories,
+  bulkInsertLinks,
   createId,
+  deleteCategoryById,
+  deleteLinkById,
+  insertCategory,
+  insertLink,
   readNavigationData,
   uniqueSlug,
-  writeNavigationData,
+  updateCategory as updateCategoryDb,
+  updateLink as updateLinkDb,
+  upsertSetting,
 } from "@/lib/data";
 
 function textValue(formData: FormData, key: string, fallback = "") {
@@ -19,6 +28,32 @@ function textValue(formData: FormData, key: string, fallback = "") {
 function intValue(formData: FormData, key: string) {
   const value = Number(formData.get(key));
   return Number.isFinite(value) ? value : 0;
+}
+
+// ============================================================
+// 输入校验
+// ============================================================
+
+const MAX_NAME_LENGTH = 100;
+const MAX_URL_LENGTH = 2048;
+
+function validateUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+type ActionResult = { ok: true } | { ok: false; error: string };
+
+function errorResult(message: string): ActionResult {
+  return { ok: false, error: message };
+}
+
+function successResult(): ActionResult {
+  return { ok: true };
 }
 
 function slugify(value: string) {
@@ -180,15 +215,16 @@ function parseBookmarkHtml(html: string): ParsedBookmark[] {
 }
 export async function loginAdmin(formData: FormData) {
   const password = textValue(formData, "password");
-  const expectedPassword = process.env.ADMIN_PASSWORD || "admin123456";
 
-  if (password !== expectedPassword) {
+  if (!verifyAdminPassword(password)) {
     redirect("/admin/login?error=1");
   }
 
+  const isProduction = process.env.NODE_ENV === "production";
   const cookieStore = await cookies();
-  cookieStore.set(ADMIN_COOKIE, "1", {
+  cookieStore.set(ADMIN_COOKIE, createAdminToken(), {
     httpOnly: true,
+    secure: isProduction,
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
@@ -203,18 +239,20 @@ export async function logoutAdmin() {
   redirect("/admin/login");
 }
 
-export async function createCategory(formData: FormData) {
-  const name = textValue(formData, "name");
-  const rawSlug = textValue(formData, "slug");
-  const parentId = textValue(formData, "parentId") || null;
+export async function createCategory(formData: FormData): Promise<ActionResult> {
+  try {
+    const name = textValue(formData, "name");
+    const rawSlug = textValue(formData, "slug");
+    const parentId = textValue(formData, "parentId") || null;
 
-  if (!name) return;
+    if (!name) return errorResult("分类名称不能为空");
+    if (name.length > MAX_NAME_LENGTH) return errorResult(`分类名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
 
-  const data = await readNavigationData();
-  const now = new Date().toISOString();
+    const data = await readNavigationData();
+    const now = new Date().toISOString();
 
-  data.categories.push({
-    id: createId("cat"),
+    insertCategory({
+      id: createId("cat"),
       name,
       slug: uniqueSlug(slugify(rawSlug || name), data.categories),
       icon: textValue(formData, "icon", "📁") || "📁",
@@ -224,74 +262,83 @@ export async function createCategory(formData: FormData) {
       sortOrder: intValue(formData, "sortOrder"),
       createdAt: now,
       updatedAt: now,
-  });
+    });
 
-  await writeNavigationData(data);
-
-  revalidatePath("/");
-  revalidatePath("/admin/categories");
+    revalidatePath("/");
+    revalidatePath("/admin/categories");
+    return successResult();
+  } catch (error) {
+    console.error("createCategory failed:", error);
+    return errorResult("创建分类失败，请稍后重试");
+  }
 }
 
-export async function updateCategory(formData: FormData) {
-  const id = textValue(formData, "id");
-  const name = textValue(formData, "name");
-  const rawSlug = textValue(formData, "slug");
-  const parentId = textValue(formData, "parentId") || null;
+export async function updateCategory(formData: FormData): Promise<ActionResult> {
+  try {
+    const id = textValue(formData, "id");
+    const name = textValue(formData, "name");
+    const rawSlug = textValue(formData, "slug");
+    const parentId = textValue(formData, "parentId") || null;
 
-  if (!id || !name) return;
+    if (!id || !name) return errorResult("分类 ID 和名称不能为空");
+    if (name.length > MAX_NAME_LENGTH) return errorResult(`分类名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
 
-  const data = await readNavigationData();
-  const category = data.categories.find((item) => item.id === id);
+    const data = await readNavigationData();
+    const existing = data.categories.find((cat) => cat.id === id);
+    if (!existing) return errorResult("分类不存在或已被删除");
 
-  if (!category) return;
-
-  Object.assign(category, {
+    updateCategoryDb({
+      ...existing,
       name,
       slug: uniqueSlug(slugify(rawSlug || name), data.categories, id),
-      icon: textValue(formData, "icon", "📁") || "📁",
-      color: textValue(formData, "color", "#2563eb") || "#2563eb",
+      icon: textValue(formData, "icon", existing.icon) || existing.icon,
+      color: textValue(formData, "color", existing.color) || existing.color,
       description: textValue(formData, "description") || null,
       parentId,
       sortOrder: intValue(formData, "sortOrder"),
       updatedAt: new Date().toISOString(),
-  });
+    });
 
-  await writeNavigationData(data);
-
-  revalidatePath("/");
-  revalidatePath("/admin/categories");
+    revalidatePath("/");
+    revalidatePath("/admin/categories");
+    return successResult();
+  } catch (error) {
+    console.error("updateCategory failed:", error);
+    return errorResult("更新分类失败，请稍后重试");
+  }
 }
 
-export async function deleteCategory(formData: FormData) {
-  const id = textValue(formData, "id");
-  if (!id) return;
+export async function deleteCategory(formData: FormData): Promise<ActionResult> {
+  try {
+    const id = textValue(formData, "id");
+    if (!id) return errorResult("分类 ID 不能为空");
 
-  const data = await readNavigationData();
-  const childIds = data.categories
-    .filter((category) => category.parentId === id)
-    .map((category) => category.id);
-  const removedIds = new Set([id, ...childIds]);
-
-  data.categories = data.categories.filter((category) => !removedIds.has(category.id));
-  data.links = data.links.filter((link) => !removedIds.has(link.categoryId));
-  await writeNavigationData(data);
-  revalidatePath("/");
-  revalidatePath("/admin");
-  revalidatePath("/admin/categories");
-  revalidatePath("/admin/links");
+    deleteCategoryById(id);
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/categories");
+    revalidatePath("/admin/links");
+    return successResult();
+  } catch (error) {
+    console.error("deleteCategory failed:", error);
+    return errorResult("删除分类失败，请稍后重试");
+  }
 }
 
-export async function createLink(formData: FormData) {
-  const title = textValue(formData, "title");
-  const url = textValue(formData, "url");
-  const categoryId = textValue(formData, "categoryId");
+export async function createLink(formData: FormData): Promise<ActionResult> {
+  try {
+    const title = textValue(formData, "title");
+    const url = textValue(formData, "url");
+    const categoryId = textValue(formData, "categoryId");
 
-  if (!title || !url || !categoryId) return;
+    if (!title || !url || !categoryId) return errorResult("网站名称、URL 和分类不能为空");
+    if (title.length > MAX_NAME_LENGTH) return errorResult(`网站名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
+    if (url.length > MAX_URL_LENGTH) return errorResult(`URL 不能超过 ${MAX_URL_LENGTH} 个字符`);
+    if (!validateUrl(url)) return errorResult("请输入有效的 http:// 或 https:// 链接");
 
-  const data = await readNavigationData();
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  data.links.push({
+    insertLink({
       id: createId("link"),
       title,
       url,
@@ -303,29 +350,36 @@ export async function createLink(formData: FormData) {
       sortOrder: intValue(formData, "sortOrder"),
       createdAt: now,
       updatedAt: now,
-  });
+    });
 
-  await writeNavigationData(data);
-
-  revalidatePath("/");
-  revalidatePath("/admin");
-  revalidatePath("/admin/links");
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/links");
+    return successResult();
+  } catch (error) {
+    console.error("createLink failed:", error);
+    return errorResult("创建链接失败，请稍后重试");
+  }
 }
 
-export async function updateLink(formData: FormData) {
-  const id = textValue(formData, "id");
-  const title = textValue(formData, "title");
-  const url = textValue(formData, "url");
-  const categoryId = textValue(formData, "categoryId");
+export async function updateLink(formData: FormData): Promise<ActionResult> {
+  try {
+    const id = textValue(formData, "id");
+    const title = textValue(formData, "title");
+    const url = textValue(formData, "url");
+    const categoryId = textValue(formData, "categoryId");
 
-  if (!id || !title || !url || !categoryId) return;
+    if (!id || !title || !url || !categoryId) return errorResult("ID、网站名称、URL 和分类不能为空");
+    if (title.length > MAX_NAME_LENGTH) return errorResult(`网站名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
+    if (url.length > MAX_URL_LENGTH) return errorResult(`URL 不能超过 ${MAX_URL_LENGTH} 个字符`);
+    if (!validateUrl(url)) return errorResult("请输入有效的 http:// 或 https:// 链接");
 
-  const data = await readNavigationData();
-  const link = data.links.find((item) => item.id === id);
+    const data = await readNavigationData();
+    const existing = data.links.find((link) => link.id === id);
+    if (!existing) return errorResult("链接不存在或已被删除");
 
-  if (!link) return;
-
-  Object.assign(link, {
+    updateLinkDb({
+      ...existing,
       title,
       url,
       categoryId,
@@ -335,141 +389,161 @@ export async function updateLink(formData: FormData) {
       isActive: formData.get("isActive") === "on",
       sortOrder: intValue(formData, "sortOrder"),
       updatedAt: new Date().toISOString(),
-  });
+    });
 
-  await writeNavigationData(data);
-
-  revalidatePath("/");
-  revalidatePath("/admin");
-  revalidatePath("/admin/links");
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/links");
+    return successResult();
+  } catch (error) {
+    console.error("updateLink failed:", error);
+    return errorResult("更新链接失败，请稍后重试");
+  }
 }
 
-export async function deleteLink(formData: FormData) {
-  const id = textValue(formData, "id");
-  if (!id) return;
+export async function deleteLink(formData: FormData): Promise<ActionResult> {
+  try {
+    const id = textValue(formData, "id");
+    if (!id) return errorResult("链接 ID 不能为空");
 
-  const data = await readNavigationData();
-  data.links = data.links.filter((link) => link.id !== id);
-  await writeNavigationData(data);
-  revalidatePath("/");
-  revalidatePath("/admin");
-  revalidatePath("/admin/links");
+    deleteLinkById(id);
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/admin/links");
+    return successResult();
+  } catch (error) {
+    console.error("deleteLink failed:", error);
+    return errorResult("删除链接失败，请稍后重试");
+  }
 }
 
 export async function importBookmarks(formData: FormData) {
-  const file = formData.get("bookmarksFile");
+  try {
+    const file = formData.get("bookmarksFile");
 
-  if (!(file instanceof File) || file.size === 0) {
-    redirect("/admin/links?importError=empty");
-  }
-
-  const html = await file.text();
-  const bookmarks = parseBookmarkHtml(html);
-
-  if (bookmarks.length === 0) {
-    redirect("/admin/links?importError=empty");
-  }
-
-  const data = await readNavigationData();
-  const now = new Date().toISOString();
-  const existingUrls = new Set(data.links.map((link) => link.url.trim().toLowerCase()));
-  const categoryByKey = new Map(
-    data.categories.map((category) => [categoryImportKey(category.parentId, category.name), category]),
-  );
-  let importedCount = 0;
-  let skippedCount = 0;
-  let nextCategorySortOrder =
-    data.categories.reduce((max, category) => Math.max(max, category.sortOrder), 0) + 1;
-  let nextLinkSortOrder =
-    data.links.reduce((max, link) => Math.max(max, link.sortOrder), 0) + 1;
-
-  function ensureImportedCategory(name: string, parentId: string | null) {
-    const key = categoryImportKey(parentId, name);
-    let category = categoryByKey.get(key);
-
-    if (category) return category;
-
-    category = {
-      id: createId("cat"),
-      name,
-      slug: uniqueSlug(slugify(parentId ? parentId + "-" + name : name), data.categories),
-      icon: "🔖",
-      color: "#2563eb",
-      description: null,
-      parentId,
-      sortOrder: nextCategorySortOrder,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    nextCategorySortOrder += 1;
-    data.categories.push(category);
-    categoryByKey.set(key, category);
-
-    return category;
-  }
-
-  for (const bookmark of bookmarks) {
-    const url = bookmark.url.trim();
-    const urlKey = url.toLowerCase();
-
-    if (existingUrls.has(urlKey)) {
-      skippedCount += 1;
-      continue;
+    if (!(file instanceof File) || file.size === 0) {
+      redirect("/admin/links?importError=empty");
     }
 
-    const parentCategory = bookmark.parentFolder
-      ? ensureImportedCategory(bookmark.parentFolder, null)
-      : null;
-    const category = ensureImportedCategory(bookmark.folder || "导入书签", parentCategory?.id ?? null);
+    const html = await file.text();
+    const bookmarks = parseBookmarkHtml(html);
 
-    data.links.push({
-      id: createId("link"),
-      title: bookmark.title,
-      url,
-      categoryId: category.id,
-      description: null,
-      icon: faviconForUrl(url),
-      isPinned: false,
-      isActive: true,
-      sortOrder: nextLinkSortOrder,
-      createdAt: now,
-      updatedAt: now,
-    });
+    if (bookmarks.length === 0) {
+      redirect("/admin/links?importError=empty");
+    }
 
-    nextLinkSortOrder += 1;
-    importedCount += 1;
-    existingUrls.add(urlKey);
+    const data = await readNavigationData();
+    const now = new Date().toISOString();
+    const existingUrls = new Set(data.links.map((link) => link.url.trim().toLowerCase()));
+    const categoryByKey = new Map(
+      data.categories.map((category) => [categoryImportKey(category.parentId, category.name), category]),
+    );
+    let importedCount = 0;
+    let skippedCount = 0;
+    let nextCategorySortOrder =
+      data.categories.reduce((max, category) => Math.max(max, category.sortOrder), 0) + 1;
+    let nextLinkSortOrder =
+      data.links.reduce((max, link) => Math.max(max, link.sortOrder), 0) + 1;
+
+    const newCategories: Category[] = [];
+    const newLinks: NavLink[] = [];
+
+    function ensureImportedCategory(name: string, parentId: string | null) {
+      const key = categoryImportKey(parentId, name);
+      let category = categoryByKey.get(key);
+
+      if (category) return category;
+
+      category = {
+        id: createId("cat"),
+        name,
+        slug: uniqueSlug(slugify(parentId ? parentId + "-" + name : name), data.categories),
+        icon: "🔖",
+        color: "#2563eb",
+        description: null,
+        parentId,
+        sortOrder: nextCategorySortOrder,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      nextCategorySortOrder += 1;
+      data.categories.push(category);
+      newCategories.push(category);
+      categoryByKey.set(key, category);
+
+      return category;
+    }
+
+    for (const bookmark of bookmarks) {
+      const url = bookmark.url.trim();
+      const urlKey = url.toLowerCase();
+
+      if (existingUrls.has(urlKey)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const parentCategory = bookmark.parentFolder
+        ? ensureImportedCategory(bookmark.parentFolder, null)
+        : null;
+      const category = ensureImportedCategory(bookmark.folder || "导入书签", parentCategory?.id ?? null);
+
+      const newLink: NavLink = {
+        id: createId("link"),
+        title: bookmark.title,
+        url,
+        categoryId: category.id,
+        description: null,
+        icon: faviconForUrl(url),
+        isPinned: false,
+        isActive: true,
+        sortOrder: nextLinkSortOrder,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      nextLinkSortOrder += 1;
+      newLinks.push(newLink);
+      importedCount += 1;
+      existingUrls.add(urlKey);
+    }
+
+    if (importedCount > 0) {
+      if (newCategories.length > 0) bulkInsertCategories(newCategories);
+      bulkInsertLinks(newLinks);
+      revalidatePath("/");
+      revalidatePath("/admin");
+      revalidatePath("/admin/categories");
+      revalidatePath("/admin/links");
+    }
+
+    redirect("/admin/links?imported=" + importedCount + "&skipped=" + skippedCount);
+  } catch (error) {
+    console.error("importBookmarks failed:", error);
+    redirect("/admin/links?importError=failed");
   }
-
-  if (importedCount > 0) {
-    await writeNavigationData(data);
-    revalidatePath("/");
-    revalidatePath("/admin");
-    revalidatePath("/admin/categories");
-    revalidatePath("/admin/links");
-  }
-
-  redirect("/admin/links?imported=" + importedCount + "&skipped=" + skippedCount);
 }
 
 function categoryImportKey(parentId: string | null, name: string) {
   return (parentId ?? "root") + "::" + name.trim().toLowerCase();
 }
-export async function updateSettings(formData: FormData) {
-  const data = await readNavigationData();
+export async function updateSettings(formData: FormData): Promise<ActionResult> {
+  try {
+    upsertSetting({
+      id: "site",
+      title: textValue(formData, "title", "我的导航") || "我的导航",
+      subtitle: textValue(formData, "subtitle", "整理常用网站、工具与资料"),
+      logoText: textValue(formData, "logoText", "N") || "N",
+      themeColor: textValue(formData, "themeColor", "#2563eb") || "#2563eb",
+    });
 
-  data.settings = {
-    id: "site",
-    title: textValue(formData, "title", "我的导航") || "我的导航",
-    subtitle: textValue(formData, "subtitle", "整理常用网站、工具与资料"),
-    logoText: textValue(formData, "logoText", "N") || "N",
-    themeColor: textValue(formData, "themeColor", "#2563eb") || "#2563eb",
-  };
-
-  await writeNavigationData(data);
-
-  revalidatePath("/");
-  revalidatePath("/admin", "layout");
-  revalidatePath("/admin/settings");
+    revalidatePath("/");
+    revalidatePath("/admin", "layout");
+    revalidatePath("/admin/settings");
+    return successResult();
+  } catch (error) {
+    console.error("updateSettings failed:", error);
+    return errorResult("更新设置失败，请稍后重试");
+  }
 }

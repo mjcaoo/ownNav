@@ -295,7 +295,9 @@ export function NavigationHome({
 
             {visibleCategories.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-9 text-center text-sm font-medium text-slate-400">
-                没有找到匹配的网站。换个关键词试试？
+                {keyword.trim()
+                  ? "没有找到匹配的网站，换个关键词试试？"
+                  : "暂未添加任何分类和链接，请先前往管理后台添加。"}
               </div>
             ) : null}
           </div>

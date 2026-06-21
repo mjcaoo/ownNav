@@ -294,24 +294,160 @@ function normalizeNavigationData(data: NavigationData): NavigationData {
   };
 }
 
+// ============================================================
+// 增量 CRUD 操作 — 替代全量读改写，避免并发数据丢失
+// ============================================================
+
+export function upsertSetting(setting: SiteSetting) {
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO settings (id, title, subtitle, logoText, themeColor)
+     VALUES (@id, @title, @subtitle, @logoText, @themeColor)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       subtitle = excluded.subtitle,
+       logoText = excluded.logoText,
+       themeColor = excluded.themeColor`,
+  ).run(setting);
+}
+
+export function insertCategory(category: Category) {
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO categories (id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt)
+     VALUES (@id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt)`,
+  ).run(category);
+}
+
+export function updateCategory(category: Category) {
+  const db = getDatabase();
+  const result = db.prepare(
+    `UPDATE categories SET
+       name = @name,
+       slug = @slug,
+       icon = @icon,
+       color = @color,
+       description = @description,
+       parentId = @parentId,
+       sortOrder = @sortOrder,
+       updatedAt = @updatedAt
+     WHERE id = @id`,
+  ).run(category);
+  return result.changes > 0;
+}
+
+export function deleteCategoryById(id: string) {
+  const db = getDatabase();
+  // 递归删除子分类（通过 foreign key CASCADE 自动删除关联 links）
+  const childIds = (db.prepare("SELECT id FROM categories WHERE parentId = ?").all(id) as { id: string }[]).map(
+    (row) => row.id,
+  );
+
+  const transaction = db.transaction(() => {
+    for (const childId of childIds) {
+      db.prepare("DELETE FROM links WHERE categoryId = ?").run(childId);
+      db.prepare("DELETE FROM categories WHERE id = ?").run(childId);
+    }
+    db.prepare("DELETE FROM links WHERE categoryId = ?").run(id);
+    db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+  });
+
+  transaction();
+}
+
+export function insertLink(link: NavLink) {
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO links (id, title, url, description, icon, isPinned, isActive, sortOrder, categoryId, createdAt, updatedAt)
+     VALUES (@id, @title, @url, @description, @icon, @isPinned, @isActive, @sortOrder, @categoryId, @createdAt, @updatedAt)`,
+  ).run({
+    ...link,
+    isPinned: link.isPinned ? 1 : 0,
+    isActive: link.isActive ? 1 : 0,
+  });
+}
+
+export function updateLink(link: NavLink) {
+  const db = getDatabase();
+  const result = db.prepare(
+    `UPDATE links SET
+       title = @title,
+       url = @url,
+       description = @description,
+       icon = @icon,
+       isPinned = @isPinned,
+       isActive = @isActive,
+       sortOrder = @sortOrder,
+       categoryId = @categoryId,
+       updatedAt = @updatedAt
+     WHERE id = @id`,
+  ).run({
+    ...link,
+    isPinned: link.isPinned ? 1 : 0,
+    isActive: link.isActive ? 1 : 0,
+  });
+  return result.changes > 0;
+}
+
+export function deleteLinkById(id: string) {
+  const db = getDatabase();
+  db.prepare("DELETE FROM links WHERE id = ?").run(id);
+}
+
+export function urlExists(url: string, excludeId?: string) {
+  const db = getDatabase();
+  const row = db.prepare("SELECT id FROM links WHERE url = ? AND id != ?").get(url, excludeId ?? "") as
+    | { id: string }
+    | undefined;
+  return Boolean(row);
+}
+
+// ============================================================
+// 批量写入（仅用于 seed 和书签导入）
+// ============================================================
+
+export function bulkInsertCategories(categories: Category[]) {
+  const db = getDatabase();
+  const insert = db.prepare(
+    `INSERT INTO categories (id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt)
+     VALUES (@id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt)`,
+  );
+  const transaction = db.transaction(() => {
+    for (const category of categories) {
+      insert.run(category);
+    }
+  });
+  transaction();
+}
+
+export function bulkInsertLinks(links: NavLink[]) {
+  const db = getDatabase();
+  const insert = db.prepare(
+    `INSERT INTO links (id, title, url, description, icon, isPinned, isActive, sortOrder, categoryId, createdAt, updatedAt)
+     VALUES (@id, @title, @url, @description, @icon, @isPinned, @isActive, @sortOrder, @categoryId, @createdAt, @updatedAt)`,
+  );
+  const transaction = db.transaction(() => {
+    for (const link of links) {
+      insert.run({
+        ...link,
+        isPinned: link.isPinned ? 1 : 0,
+        isActive: link.isActive ? 1 : 0,
+      });
+    }
+  });
+  transaction();
+}
+
+// 保留用于 seed 写入
 function writeNavigationDataToDb(db: Database.Database, data: NavigationData) {
   const write = db.transaction((payload: NavigationData) => {
-    db.prepare("DELETE FROM links").run();
-    db.prepare("DELETE FROM categories").run();
-    db.prepare("DELETE FROM settings").run();
-
     db.prepare(
-      "INSERT INTO settings (id, title, subtitle, logoText, themeColor) VALUES (@id, @title, @subtitle, @logoText, @themeColor)",
+      "INSERT OR REPLACE INTO settings (id, title, subtitle, logoText, themeColor) VALUES (@id, @title, @subtitle, @logoText, @themeColor)",
     ).run(payload.settings);
 
     const insertCategory = db.prepare(
-      [
-        "INSERT INTO categories (",
-        "  id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt",
-        ") VALUES (",
-        "  @id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt",
-        ")",
-      ].join("\n"),
+      `INSERT OR REPLACE INTO categories (id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt)
+       VALUES (@id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt)`,
     );
 
     for (const category of payload.categories) {
@@ -319,13 +455,8 @@ function writeNavigationDataToDb(db: Database.Database, data: NavigationData) {
     }
 
     const insertLink = db.prepare(
-      [
-        "INSERT INTO links (",
-        "  id, title, url, description, icon, isPinned, isActive, sortOrder, categoryId, createdAt, updatedAt",
-        ") VALUES (",
-        "  @id, @title, @url, @description, @icon, @isPinned, @isActive, @sortOrder, @categoryId, @createdAt, @updatedAt",
-        ")",
-      ].join("\n"),
+      `INSERT OR REPLACE INTO links (id, title, url, description, icon, isPinned, isActive, sortOrder, categoryId, createdAt, updatedAt)
+       VALUES (@id, @title, @url, @description, @icon, @isPinned, @isActive, @sortOrder, @categoryId, @createdAt, @updatedAt)`,
     );
 
     for (const link of payload.links) {
