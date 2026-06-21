@@ -49,6 +49,7 @@ export function NavigationHome({
   const [keyword, setKeyword] = useState("");
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "");
   const [activeTags, setActiveTags] = useState<Record<string, string>>({});
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -61,6 +62,15 @@ export function NavigationHome({
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    function handleScroll() {
+      setShowBackToTop(window.scrollY > 400);
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const visibleCategories = useMemo(() => {
@@ -291,6 +301,19 @@ export function NavigationHome({
           </div>
         </div>
       </div>
+
+      {/* 回到顶部 */}
+      {showBackToTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed right-4 bottom-6 z-40 grid h-10 w-10 place-items-center rounded-full bg-slate-900/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-900 sm:right-6 sm:bottom-8"
+          aria-label="回到顶部"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+      )}
     </main>
   );
 }
