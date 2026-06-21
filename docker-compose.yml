@@ -1,6 +1,6 @@
 services:
   nav-dashboard:
-    build: .
+    image: mjcaoo/nav-dashboard
     ports:
       - "3000:3000"
     volumes:
