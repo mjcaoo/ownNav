@@ -15,10 +15,6 @@ export default async function LoginPage({
           ← 返回首页
         </Link>
         <h1 className="mt-6 text-2xl font-bold text-slate-950">登录管理后台</h1>
-        <p className="mt-2 text-sm leading-5 text-slate-500">
-          默认密码是 <code className="rounded bg-slate-100 px-1.5 py-0.5">admin123456</code>，
-          建议在 <code className="rounded bg-slate-100 px-1.5 py-0.5">.env</code> 中修改。
-        </p>
 
         {params?.error ? (
           <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
