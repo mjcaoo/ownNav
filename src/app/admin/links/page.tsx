@@ -4,6 +4,7 @@ import {
   importBookmarks,
   updateLink,
 } from "@/app/admin/actions";
+import { AdminModal } from "@/components/admin-modal";
 import { AdminPagination, normalizePageParam, pageCount, pageSlice } from "@/components/admin-pagination";
 import { getLinksWithCategory, readNavigationData, bySortAndCreatedAt, type Category } from "@/lib/data";
 
@@ -14,7 +15,12 @@ const LINK_PAGE_SIZE = 12;
 export default async function LinksAdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string | string[]; imported?: string | string[]; skipped?: string | string[]; importError?: string | string[] }>;
+  searchParams?: Promise<{
+    page?: string | string[];
+    imported?: string | string[];
+    skipped?: string | string[];
+    importError?: string | string[];
+  }>;
 }) {
   const [data, links] = await Promise.all([readNavigationData(), getLinksWithCategory()]);
   const categories = [...data.categories].sort(bySortAndCreatedAt);
@@ -25,20 +31,100 @@ export default async function LinksAdminPage({
   const totalLinkPages = pageCount(links.length, LINK_PAGE_SIZE);
   const currentPage = normalizePageParam(params?.page, totalLinkPages);
   const paginatedLinks = pageSlice(links, currentPage, LINK_PAGE_SIZE);
+
   return (
     <div className="grid gap-4">
-      <header>
-        <h1 className="text-2xl font-bold">链接管理</h1>
-        <p className="mt-1 text-sm text-slate-500">添加、编辑、隐藏或删除导航链接。</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">链接管理</h1>
+          <p className="mt-1 text-sm text-slate-500">添加、编辑、隐藏或删除导航链接。</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminModal
+            triggerLabel="导入书签"
+            title="导入浏览器书签"
+            description="支持 Chrome、Edge、Safari 等浏览器导出的 HTML 书签文件；会按书签文件夹自动创建分类，并按 URL 去重。"
+          >
+            <form action={importBookmarks} className="grid gap-3">
+              <label className="admin-label">
+                书签 HTML 文件
+                <input
+                  name="bookmarksFile"
+                  type="file"
+                  required
+                  accept=".html,.htm,text/html"
+                  className="admin-input"
+                />
+              </label>
+              <p className="rounded-2xl bg-blue-50 p-3 text-xs leading-5 text-blue-700">
+                从浏览器书签管理器导出 HTML 文件后上传即可；导入时会保留文件夹层级，并自动跳过重复 URL。
+              </p>
+              <div className="flex justify-end">
+                <button type="submit" className="admin-button whitespace-nowrap">
+                  导入书签文件
+                </button>
+              </div>
+            </form>
+          </AdminModal>
+
+          {categories.length > 0 ? (
+            <AdminModal
+              triggerLabel="新增链接"
+              title="新增链接"
+              description="添加一个导航链接；保存后会自动回到当前管理页。"
+            >
+              <form action={createLink} className="grid gap-3 md:grid-cols-2">
+                <label className="admin-label">
+                  网站名称
+                  <input name="title" required className="admin-input" placeholder="例如 GitHub" />
+                </label>
+                <label className="admin-label">
+                  网站 URL
+                  <input name="url" required type="url" className="admin-input" placeholder="https://..." />
+                </label>
+                <label className="admin-label">
+                  所属分类
+                  <select name="categoryId" required className="admin-input">
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {categoryLabel(category, categoryMap)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="admin-label">
+                  图标 URL
+                  <input name="icon" className="admin-input" placeholder="可填 favicon 地址" />
+                </label>
+                <label className="admin-label md:col-span-2">
+                  描述
+                  <textarea name="description" className="admin-input min-h-20" placeholder="简单介绍这个网站" />
+                </label>
+                <label className="admin-label">
+                  排序
+                  <input name="sortOrder" type="number" defaultValue="0" className="admin-input" />
+                </label>
+                <div className="flex items-end gap-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+                    <input name="isPinned" type="checkbox" className="h-4 w-4" />
+                    置顶
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+                    <input name="isActive" type="checkbox" defaultChecked className="h-4 w-4" />
+                    启用
+                  </label>
+                  <button type="submit" className="admin-button ml-auto">
+                    添加链接
+                  </button>
+                </div>
+              </form>
+            </AdminModal>
+          ) : null}
+        </div>
       </header>
-      <section className="admin-card border-blue-100 bg-blue-50/60">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold">导入浏览器书签</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              支持 Chrome、Edge、Safari 等浏览器导出的 HTML 书签文件；会按书签文件夹自动创建分类，并按 URL 去重。
-            </p>
-          </div>
+
+      {params?.importError || params?.imported ? (
+        <div className="flex flex-wrap items-center gap-2">
           {params?.importError ? (
             <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">
               未识别到可导入链接
@@ -50,116 +136,54 @@ export default async function LinksAdminPage({
             </span>
           ) : null}
         </div>
+      ) : null}
 
-        <form action={importBookmarks} className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
-          <input
-            name="bookmarksFile"
-            type="file"
-            required
-            accept=".html,.htm,text/html"
-            className="admin-input md:flex-1"
-          />
-          <button type="submit" className="admin-button whitespace-nowrap">
-            导入书签文件
-          </button>
-        </form>
-      </section>
-
-
-      <section className="admin-card">
-        <h2 className="text-lg font-bold">新增链接</h2>
-        {categories.length === 0 ? (
-          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-700">
-            请先创建至少一个分类，再添加链接。
-          </p>
-        ) : (
-          <form action={createLink} className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="admin-label">
-              网站名称
-              <input name="title" required className="admin-input" placeholder="例如 GitHub" />
-            </label>
-            <label className="admin-label">
-              网站 URL
-              <input name="url" required type="url" className="admin-input" placeholder="https://..." />
-            </label>
-            <label className="admin-label">
-              所属分类
-              <select name="categoryId" required className="admin-input">
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {categoryLabel(category, categoryMap)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="admin-label">
-              图标 URL
-              <input name="icon" className="admin-input" placeholder="可填 favicon 地址" />
-            </label>
-            <label className="admin-label md:col-span-2">
-              描述
-              <textarea name="description" className="admin-input min-h-16" placeholder="简单介绍这个网站" />
-            </label>
-            <label className="admin-label">
-              排序
-              <input name="sortOrder" type="number" defaultValue="0" className="admin-input" />
-            </label>
-            <div className="flex items-end gap-3">
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-                <input name="isPinned" type="checkbox" className="h-4 w-4" />
-                置顶
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-                <input name="isActive" type="checkbox" defaultChecked className="h-4 w-4" />
-                启用
-              </label>
-              <button type="submit" className="admin-button ml-auto">
-                添加链接
-              </button>
-            </div>
-          </form>
-        )}
-      </section>
+      {categories.length === 0 ? (
+        <p className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-700">
+          请先创建至少一个分类，再添加链接；也可以直接导入浏览器书签自动生成分类。
+        </p>
+      ) : null}
 
       <section className="admin-card">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold">已有链接</h2>
-            <p className="mt-1 text-xs text-slate-500">紧凑行内编辑，减少多链接场景下的纵向滚动。</p>
+            <p className="mt-1 text-xs text-slate-500">列表式行内编辑，更适合大量链接快速扫视和批量维护。</p>
           </div>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
             {links.length} 个链接 · 第 {currentPage}/{totalLinkPages} 页
           </span>
         </div>
 
-        <div className="mt-3 grid gap-2">
-          {paginatedLinks.length > 0 ? paginatedLinks.map((link) => (
-            <div
-              key={link.id}
-              className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5"
-            >
-              <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-start">
-                <form
-                  action={updateLink}
-                  className="grid flex-1 gap-2 lg:grid-cols-[minmax(150px,1fr)_minmax(220px,1.45fr)_150px_150px_72px_auto]"
-                >
+        <div className="mx-auto mt-3 w-full overflow-x-auto rounded-2xl border border-slate-100">
+          <div className="grid w-full min-w-[1220px] grid-cols-[minmax(150px,1.05fr)_minmax(240px,1.8fr)_minmax(160px,1.05fr)_minmax(180px,1.35fr)_minmax(120px,0.9fr)_64px_112px_64px_56px] gap-2 bg-slate-50 px-2 py-2 text-xs font-bold text-slate-500">
+            <span>名称</span>
+            <span>URL</span>
+            <span>分类</span>
+            <span>描述</span>
+            <span>图标</span>
+            <span>排序</span>
+            <span>状态</span>
+            <span>保存</span>
+            <span>删除</span>
+          </div>
+
+          {paginatedLinks.length > 0 ? (
+            paginatedLinks.map((link) => (
+              <div
+                key={link.id}
+                className="grid w-full min-w-[1220px] grid-cols-[minmax(150px,1.05fr)_minmax(240px,1.8fr)_minmax(160px,1.05fr)_minmax(180px,1.35fr)_minmax(120px,0.9fr)_64px_112px_64px_56px] gap-2 border-t border-slate-100 bg-white px-2 py-2 text-sm transition hover:bg-slate-50/80"
+              >
+                <form action={updateLink} className="contents">
                   <input type="hidden" name="id" value={link.id} />
-                  <label className="sr-only" htmlFor={`link-title-${link.id}`}>
-                    网站名称
-                  </label>
                   <input
-                    id={`link-title-${link.id}`}
                     name="title"
                     required
                     defaultValue={link.title}
                     className="admin-input h-9"
                     aria-label="网站名称"
                   />
-                  <label className="sr-only" htmlFor={`link-url-${link.id}`}>
-                    URL
-                  </label>
                   <input
-                    id={`link-url-${link.id}`}
                     name="url"
                     required
                     type="url"
@@ -167,11 +191,7 @@ export default async function LinksAdminPage({
                     className="admin-input h-9"
                     aria-label="URL"
                   />
-                  <label className="sr-only" htmlFor={`link-category-${link.id}`}>
-                    分类
-                  </label>
                   <select
-                    id={`link-category-${link.id}`}
                     name="categoryId"
                     required
                     defaultValue={link.categoryId}
@@ -184,60 +204,43 @@ export default async function LinksAdminPage({
                       </option>
                     ))}
                   </select>
-                  <label className="sr-only" htmlFor={`link-icon-${link.id}`}>
-                    图标 URL
-                  </label>
                   <input
-                    id={`link-icon-${link.id}`}
+                    name="description"
+                    defaultValue={link.description ?? ""}
+                    className="admin-input h-9"
+                    aria-label="描述"
+                    placeholder="描述"
+                  />
+                  <input
                     name="icon"
                     defaultValue={link.icon ?? ""}
                     className="admin-input h-9"
                     aria-label="图标 URL"
                     placeholder="图标 URL"
                   />
-                  <label className="sr-only" htmlFor={`link-sort-${link.id}`}>
-                    排序
-                  </label>
                   <input
-                    id={`link-sort-${link.id}`}
                     name="sortOrder"
                     type="number"
                     defaultValue={link.sortOrder}
                     className="admin-input h-9"
                     aria-label="排序"
                   />
-                  <button type="submit" className="admin-button h-9 self-start whitespace-nowrap">
-                    保存
-                  </button>
-
-                  <label className="sr-only" htmlFor={`link-description-${link.id}`}>
-                    描述
-                  </label>
-                  <textarea
-                    id={`link-description-${link.id}`}
-                    name="description"
-                    defaultValue={link.description ?? ""}
-                    className="admin-input min-h-9 resize-y py-2 lg:col-span-3"
-                    aria-label="描述"
-                    placeholder="描述"
-                  />
-
-                  <div className="flex flex-wrap items-center gap-3 lg:col-span-3">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <input name="isPinned" type="checkbox" defaultChecked={link.isPinned} className="h-4 w-4" />
+                  <div className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600">
+                    <label className="flex items-center gap-1">
+                      <input name="isPinned" type="checkbox" defaultChecked={link.isPinned} className="h-3.5 w-3.5" />
                       置顶
                     </label>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <input name="isActive" type="checkbox" defaultChecked={link.isActive} className="h-4 w-4" />
+                    <label className="flex items-center gap-1">
+                      <input name="isActive" type="checkbox" defaultChecked={link.isActive} className="h-3.5 w-3.5" />
                       启用
                     </label>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500">
-                      {categoryLabel(link.category, categoryMap)}
-                    </span>
                   </div>
+                  <button type="submit" className="admin-button h-9 px-3">
+                    保存
+                  </button>
                 </form>
 
-                <form action={deleteLink} className="2xl:self-start">
+                <form action={deleteLink}>
                   <input type="hidden" name="id" value={link.id} />
                   <button
                     type="submit"
@@ -247,9 +250,9 @@ export default async function LinksAdminPage({
                   </button>
                 </form>
               </div>
-            </div>
-          )) : (
-            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">暂无链接。</p>
+            ))
+          ) : (
+            <p className="border-t border-slate-100 bg-white p-4 text-sm text-slate-500">暂无链接。</p>
           )}
         </div>
 
@@ -264,11 +267,10 @@ export default async function LinksAdminPage({
     </div>
   );
 }
+
 function categoryLabel(category: Category, categoryMap: Map<string, Category>) {
   if (!category.parentId) return category.icon + " " + category.name;
 
   const parent = categoryMap.get(category.parentId);
   return (parent ? parent.name : "未知一级") + " / " + category.icon + " " + category.name;
 }
-
-
