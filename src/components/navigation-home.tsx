@@ -121,8 +121,8 @@ export function NavigationHome({
           </div>
         </Link>
 
-        <div className="flex shrink-0 items-center gap-2.5">
-          <label className="hidden h-9 min-w-[260px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm text-slate-400 shadow-sm focus-within:border-blue-200 focus-within:ring-4 focus-within:ring-blue-50 md:flex lg:min-w-[340px]">
+        <div className="flex min-w-0 shrink items-center gap-2.5">
+          <label className="hidden h-9 min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm text-slate-400 shadow-sm focus-within:border-blue-200 focus-within:ring-4 focus-within:ring-blue-50 md:flex md:w-48 lg:w-72">
             <SearchIcon />
             <input
               ref={searchRef}
@@ -138,7 +138,7 @@ export function NavigationHome({
 
           <Link
             href="/admin"
-            className="inline-flex h-9 items-center justify-center rounded-full bg-blue-500 px-4 text-sm font-bold text-white shadow-sm shadow-blue-200 transition hover:bg-blue-600 md:px-5"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-blue-500 px-4 text-sm font-bold text-white shadow-sm shadow-blue-200 transition hover:bg-blue-600 md:px-5"
           >
             登录
           </Link>
@@ -160,8 +160,8 @@ export function NavigationHome({
           </nav>
         </aside>
 
-        <div className="px-4 py-5 sm:px-5 md:px-6 lg:px-8 xl:px-12">
-          <label className="mb-4 flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm text-slate-400 shadow-sm md:hidden">
+        <div className="min-w-0 overflow-hidden px-4 py-5 sm:px-5 md:px-6 lg:px-8 xl:px-12">
+          <label className="mb-4 flex h-10 w-full max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm text-slate-400 shadow-sm md:hidden">
             <SearchIcon />
             <input
               value={keyword}
@@ -217,8 +217,8 @@ export function NavigationHome({
                   {category.name}
                 </h2>
 
-                <div className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.055)]">
-                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
+                <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.055)]">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
                     <button
                       type="button"
                       onClick={() => selectCategoryTag(category.id, "all")}
@@ -245,7 +245,7 @@ export function NavigationHome({
                   </div>
 
                   {links.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                    <div className="grid min-w-0 grid-cols-1 gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                       {links.map((link) => (
                         <a
                           key={link.id}

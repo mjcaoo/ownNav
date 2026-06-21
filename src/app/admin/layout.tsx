@@ -50,7 +50,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         </form>
       </aside>
 
-      <div className="md:pl-56">
+      <div className="min-w-0 overflow-hidden md:pl-56">
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
             <Link href="/admin" className="flex min-w-0 items-center gap-2 font-semibold">
@@ -78,7 +78,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </nav>
         </header>
 
-        <div className="mx-auto max-w-7xl px-4 py-5 md:px-6 md:py-6">{children}</div>
+        <div className="mx-auto min-w-0 max-w-7xl px-4 py-5 md:px-6 md:py-6">{children}</div>
       </div>
     </main>
   );

@@ -7,8 +7,8 @@ export default async function AdminDashboard() {
   const { categoryCount, linkCount, activeLinkCount, latestLinks } = await getDashboardData();
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-col justify-between gap-3 rounded-2xl bg-slate-950 p-5 md:p-6 text-white md:flex-row md:items-end">
+    <div className="grid min-w-0 gap-4">
+      <div className="flex min-w-0 flex-col justify-between gap-3 rounded-2xl bg-slate-950 p-5 md:p-6 text-white md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-bold">导航站管理后台</h1>
         </div>
@@ -17,7 +17,7 @@ export default async function AdminDashboard() {
         </Link>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+      <section className="grid min-w-0 gap-3 sm:grid-cols-2 md:grid-cols-3">
         <div className="admin-card">
           <p className="text-sm text-slate-500">分类数量</p>
           <strong className="mt-1 block text-2xl">{categoryCount}</strong>
@@ -32,23 +32,23 @@ export default async function AdminDashboard() {
         </div>
       </section>
 
-      <section className="admin-card">
-        <div className="flex items-center justify-between gap-4">
+      <section className="admin-card min-w-0">
+        <div className="flex min-w-0 items-center justify-between gap-4">
           <h2 className="text-lg font-bold">最近添加</h2>
           <Link href="/admin/links" className="admin-button-secondary">
             管理链接
           </Link>
         </div>
 
-        <div className="mt-4 grid gap-2">
+        <div className="mt-4 grid min-w-0 gap-2">
           {latestLinks.map((link) => (
             <div
               key={link.id}
-              className="flex flex-col justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 md:flex-row md:items-center"
+              className="flex min-w-0 flex-col justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 md:flex-row md:items-center"
             >
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold">{link.title}</p>
-                <p className="text-sm text-slate-500 truncate">
+                <p className="truncate text-sm text-slate-500">
                   {link.category.name} · {link.url}
                 </p>
               </div>
