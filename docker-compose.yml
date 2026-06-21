@@ -1,0 +1,10 @@
+services:
+  nav-dashboard:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123456}
+    restart: unless-stopped
