@@ -34,6 +34,7 @@ type ParsedBookmark = {
   title: string;
   url: string;
   folder: string;
+  parentFolder: string | null;
 };
 
 function stripTags(value: string) {
@@ -129,6 +130,7 @@ function parseBookmarkHtml(html: string): ParsedBookmark[] {
       title,
       url,
       folder: folderStack.at(-1) || "导入书签",
+      parentFolder: folderStack.length > 1 ? folderStack.at(-2) ?? null : null,
     });
   }
 
@@ -162,6 +164,7 @@ export async function logoutAdmin() {
 export async function createCategory(formData: FormData) {
   const name = textValue(formData, "name");
   const rawSlug = textValue(formData, "slug");
+  const parentId = textValue(formData, "parentId") || null;
 
   if (!name) return;
 
@@ -175,6 +178,7 @@ export async function createCategory(formData: FormData) {
       icon: textValue(formData, "icon", "📁") || "📁",
       color: textValue(formData, "color", "#2563eb") || "#2563eb",
       description: textValue(formData, "description") || null,
+      parentId,
       sortOrder: intValue(formData, "sortOrder"),
       createdAt: now,
       updatedAt: now,
@@ -190,6 +194,7 @@ export async function updateCategory(formData: FormData) {
   const id = textValue(formData, "id");
   const name = textValue(formData, "name");
   const rawSlug = textValue(formData, "slug");
+  const parentId = textValue(formData, "parentId") || null;
 
   if (!id || !name) return;
 
@@ -204,6 +209,7 @@ export async function updateCategory(formData: FormData) {
       icon: textValue(formData, "icon", "📁") || "📁",
       color: textValue(formData, "color", "#2563eb") || "#2563eb",
       description: textValue(formData, "description") || null,
+      parentId,
       sortOrder: intValue(formData, "sortOrder"),
       updatedAt: new Date().toISOString(),
   });
@@ -219,11 +225,18 @@ export async function deleteCategory(formData: FormData) {
   if (!id) return;
 
   const data = await readNavigationData();
-  data.categories = data.categories.filter((category) => category.id !== id);
-  data.links = data.links.filter((link) => link.categoryId !== id);
+  const childIds = data.categories
+    .filter((category) => category.parentId === id)
+    .map((category) => category.id);
+  const removedIds = new Set([id, ...childIds]);
+
+  data.categories = data.categories.filter((category) => !removedIds.has(category.id));
+  data.links = data.links.filter((link) => !removedIds.has(link.categoryId));
   await writeNavigationData(data);
   revalidatePath("/");
+  revalidatePath("/admin");
   revalidatePath("/admin/categories");
+  revalidatePath("/admin/links");
 }
 
 export async function createLink(formData: FormData) {
@@ -318,8 +331,8 @@ export async function importBookmarks(formData: FormData) {
   const data = await readNavigationData();
   const now = new Date().toISOString();
   const existingUrls = new Set(data.links.map((link) => link.url.trim().toLowerCase()));
-  const categoryByName = new Map(
-    data.categories.map((category) => [category.name.trim().toLowerCase(), category]),
+  const categoryByKey = new Map(
+    data.categories.map((category) => [categoryImportKey(category.parentId, category.name), category]),
   );
   let importedCount = 0;
   let skippedCount = 0;
@@ -327,6 +340,32 @@ export async function importBookmarks(formData: FormData) {
     data.categories.reduce((max, category) => Math.max(max, category.sortOrder), 0) + 1;
   let nextLinkSortOrder =
     data.links.reduce((max, link) => Math.max(max, link.sortOrder), 0) + 1;
+
+  function ensureImportedCategory(name: string, parentId: string | null) {
+    const key = categoryImportKey(parentId, name);
+    let category = categoryByKey.get(key);
+
+    if (category) return category;
+
+    category = {
+      id: createId("cat"),
+      name,
+      slug: uniqueSlug(slugify(parentId ? parentId + "-" + name : name), data.categories),
+      icon: "🔖",
+      color: "#2563eb",
+      description: "从浏览器书签文件导入",
+      parentId,
+      sortOrder: nextCategorySortOrder,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    nextCategorySortOrder += 1;
+    data.categories.push(category);
+    categoryByKey.set(key, category);
+
+    return category;
+  }
 
   for (const bookmark of bookmarks) {
     const url = bookmark.url.trim();
@@ -337,27 +376,10 @@ export async function importBookmarks(formData: FormData) {
       continue;
     }
 
-    const categoryName = bookmark.folder || "导入书签";
-    const categoryKey = categoryName.trim().toLowerCase();
-    let category = categoryByName.get(categoryKey);
-
-    if (!category) {
-      category = {
-        id: createId("cat"),
-        name: categoryName,
-        slug: uniqueSlug(slugify(categoryName), data.categories),
-        icon: "🔖",
-        color: "#2563eb",
-        description: "从浏览器书签文件导入",
-        sortOrder: nextCategorySortOrder,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      nextCategorySortOrder += 1;
-      data.categories.push(category);
-      categoryByName.set(categoryKey, category);
-    }
+    const parentCategory = bookmark.parentFolder
+      ? ensureImportedCategory(bookmark.parentFolder, null)
+      : null;
+    const category = ensureImportedCategory(bookmark.folder || "导入书签", parentCategory?.id ?? null);
 
     data.links.push({
       id: createId("link"),
@@ -387,6 +409,10 @@ export async function importBookmarks(formData: FormData) {
   }
 
   redirect("/admin/links?imported=" + importedCount + "&skipped=" + skippedCount);
+}
+
+function categoryImportKey(parentId: string | null, name: string) {
+  return (parentId ?? "root") + "::" + name.trim().toLowerCase();
 }
 export async function updateSettings(formData: FormData) {
   const data = await readNavigationData();

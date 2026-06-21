@@ -4,20 +4,27 @@ import {
   importBookmarks,
   updateLink,
 } from "@/app/admin/actions";
-import { getLinksWithCategory, readNavigationData, bySortAndCreatedAt } from "@/lib/data";
+import { AdminPagination, normalizePageParam, pageCount, pageSlice } from "@/components/admin-pagination";
+import { getLinksWithCategory, readNavigationData, bySortAndCreatedAt, type Category } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
+
+const LINK_PAGE_SIZE = 12;
 
 export default async function LinksAdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ imported?: string; skipped?: string; importError?: string }>;
+  searchParams?: Promise<{ page?: string | string[]; imported?: string | string[]; skipped?: string | string[]; importError?: string | string[] }>;
 }) {
   const [data, links] = await Promise.all([readNavigationData(), getLinksWithCategory()]);
   const categories = [...data.categories].sort(bySortAndCreatedAt);
+  const categoryMap = new Map(categories.map((category) => [category.id, category]));
   const params = await searchParams;
   const importedCount = Number(params?.imported ?? 0);
   const skippedCount = Number(params?.skipped ?? 0);
+  const totalLinkPages = pageCount(links.length, LINK_PAGE_SIZE);
+  const currentPage = normalizePageParam(params?.page, totalLinkPages);
+  const paginatedLinks = pageSlice(links, currentPage, LINK_PAGE_SIZE);
   return (
     <div className="grid gap-4">
       <header>
@@ -80,7 +87,7 @@ export default async function LinksAdminPage({
               <select name="categoryId" required className="admin-input">
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.icon} {category.name}
+                    {categoryLabel(category, categoryMap)}
                   </option>
                 ))}
               </select>
@@ -121,12 +128,12 @@ export default async function LinksAdminPage({
             <p className="mt-1 text-xs text-slate-500">紧凑行内编辑，减少多链接场景下的纵向滚动。</p>
           </div>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-            {links.length} 个链接
+            {links.length} 个链接 · 第 {currentPage}/{totalLinkPages} 页
           </span>
         </div>
 
         <div className="mt-3 grid gap-2">
-          {links.map((link) => (
+          {paginatedLinks.length > 0 ? paginatedLinks.map((link) => (
             <div
               key={link.id}
               className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5"
@@ -173,7 +180,7 @@ export default async function LinksAdminPage({
                   >
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
-                        {category.icon} {category.name}
+                        {categoryLabel(category, categoryMap)}
                       </option>
                     ))}
                   </select>
@@ -225,7 +232,7 @@ export default async function LinksAdminPage({
                       启用
                     </label>
                     <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500">
-                      {link.category.icon} {link.category.name}
+                      {categoryLabel(link.category, categoryMap)}
                     </span>
                   </div>
                 </form>
@@ -241,9 +248,27 @@ export default async function LinksAdminPage({
                 </form>
               </div>
             </div>
-          ))}
+          )) : (
+            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">暂无链接。</p>
+          )}
         </div>
+
+        <AdminPagination
+          basePath="/admin/links"
+          currentPage={currentPage}
+          totalItems={links.length}
+          pageSize={LINK_PAGE_SIZE}
+          itemName="链接"
+        />
       </section>
     </div>
   );
 }
+function categoryLabel(category: Category, categoryMap: Map<string, Category>) {
+  if (!category.parentId) return category.icon + " " + category.name;
+
+  const parent = categoryMap.get(category.parentId);
+  return (parent ? parent.name : "未知一级") + " / " + category.icon + " " + category.name;
+}
+
+

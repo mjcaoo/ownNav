@@ -20,6 +20,7 @@ export type Category = {
   icon: string;
   color: string;
   description: string | null;
+  parentId: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ export type NavigationData = {
 };
 
 export type CategoryWithLinks = Category & {
+  children: Category[];
   links: NavLink[];
 };
 
@@ -89,7 +91,7 @@ export async function readNavigationData(): Promise<NavigationData> {
 
   const categories = db
     .prepare(
-      "SELECT id, name, slug, icon, color, description, sortOrder, createdAt, updatedAt FROM categories ORDER BY sortOrder ASC, createdAt ASC",
+      "SELECT id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt FROM categories ORDER BY sortOrder ASC, createdAt ASC",
     )
     .all() as Category[];
 
@@ -101,13 +103,16 @@ export async function readNavigationData(): Promise<NavigationData> {
 
   return {
     settings: settings ?? defaultData.settings,
-    categories,
+    categories: categories.map((category) => ({
+      ...category,
+      parentId: category.parentId ?? null,
+    })),
     links,
   };
 }
 
 export async function writeNavigationData(data: NavigationData) {
-  writeNavigationDataToDb(getDatabase(), data);
+  writeNavigationDataToDb(getDatabase(), normalizeNavigationData(data));
 }
 
 export async function getSettings() {
@@ -117,16 +122,31 @@ export async function getSettings() {
 
 export async function getCategoriesWithLinks({ onlyActive = false } = {}) {
   const data = await readNavigationData();
+  const childMap = new Map<string, Category[]>();
+  const categoryIds = new Set(data.categories.map((category) => category.id));
 
-  return [...data.categories]
+  for (const category of data.categories) {
+    if (!category.parentId || !categoryIds.has(category.parentId)) continue;
+
+    childMap.set(category.parentId, [...(childMap.get(category.parentId) ?? []), category]);
+  }
+
+  return data.categories
+    .filter((category) => !category.parentId || !categoryIds.has(category.parentId))
     .sort(bySortAndCreatedAt)
-    .map((category) => ({
-      ...category,
-      links: data.links
-        .filter((link) => link.categoryId === category.id)
-        .filter((link) => (onlyActive ? link.isActive : true))
-        .sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || bySortAndCreatedAt(a, b)),
-    }));
+    .map((category) => {
+      const children = [...(childMap.get(category.id) ?? [])].sort(bySortAndCreatedAt);
+      const categoryIdSet = new Set([category.id, ...children.map((child) => child.id)]);
+
+      return {
+        ...category,
+        children,
+        links: data.links
+          .filter((link) => categoryIdSet.has(link.categoryId))
+          .filter((link) => (onlyActive ? link.isActive : true))
+          .sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || bySortAndCreatedAt(a, b)),
+      };
+    });
 }
 
 export async function getLinksWithCategory() {
@@ -180,19 +200,28 @@ export function uniqueSlug(slug: string, categories: Category[], currentId?: str
 }
 
 function getDatabase() {
-  if (database) return database;
+  if (database) {
+    ensureDatabaseSchema(database);
+    return database;
+  }
 
   mkdirSync(dataDir, { recursive: true });
   database = new Database(dbPath);
   database.pragma("journal_mode = WAL");
   database.pragma("foreign_keys = ON");
-  createSchema(database);
+  ensureDatabaseSchema(database);
   seedDatabaseIfEmpty(database);
 
   return database;
 }
 
-function createSchema(db: Database.Database) {
+function ensureDatabaseSchema(db: Database.Database) {
+  createTables(db);
+  migrateSchema(db);
+  createIndexes(db);
+}
+
+function createTables(db: Database.Database) {
   db.exec([
     "CREATE TABLE IF NOT EXISTS settings (",
     "  id TEXT PRIMARY KEY,",
@@ -208,6 +237,7 @@ function createSchema(db: Database.Database) {
     "  icon TEXT NOT NULL,",
     "  color TEXT NOT NULL,",
     "  description TEXT,",
+    "  parentId TEXT,",
     "  sortOrder INTEGER NOT NULL,",
     "  createdAt TEXT NOT NULL,",
     "  updatedAt TEXT NOT NULL",
@@ -226,6 +256,20 @@ function createSchema(db: Database.Database) {
     "  updatedAt TEXT NOT NULL,",
     "  FOREIGN KEY (categoryId) REFERENCES categories(id) ON DELETE CASCADE",
     ");",
+  ].join("\n"));
+}
+
+function migrateSchema(db: Database.Database) {
+  const columns = db.prepare("PRAGMA table_info(categories)").all() as Array<{ name: string }>;
+
+  if (!columns.some((column) => column.name === "parentId")) {
+    db.prepare("ALTER TABLE categories ADD COLUMN parentId TEXT").run();
+  }
+}
+
+function createIndexes(db: Database.Database) {
+  db.exec([
+    "CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parentId);",
     "CREATE INDEX IF NOT EXISTS idx_links_category_id ON links(categoryId);",
     "CREATE INDEX IF NOT EXISTS idx_links_url ON links(url);",
   ].join("\n"));
@@ -244,7 +288,7 @@ function seedDatabaseIfEmpty(db: Database.Database) {
 
   if (settingsCount + categoryCount + linkCount > 0) return;
 
-  writeNavigationDataToDb(db, readJsonSeed() ?? defaultData);
+  writeNavigationDataToDb(db, normalizeNavigationData(readJsonSeed() ?? defaultData));
 }
 
 function readJsonSeed() {
@@ -255,6 +299,16 @@ function readJsonSeed() {
   } catch {
     return null;
   }
+}
+
+function normalizeNavigationData(data: NavigationData): NavigationData {
+  return {
+    ...data,
+    categories: data.categories.map((category) => ({
+      ...category,
+      parentId: category.parentId ?? null,
+    })),
+  };
 }
 
 function writeNavigationDataToDb(db: Database.Database, data: NavigationData) {
@@ -270,9 +324,9 @@ function writeNavigationDataToDb(db: Database.Database, data: NavigationData) {
     const insertCategory = db.prepare(
       [
         "INSERT INTO categories (",
-        "  id, name, slug, icon, color, description, sortOrder, createdAt, updatedAt",
+        "  id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt",
         ") VALUES (",
-        "  @id, @name, @slug, @icon, @color, @description, @sortOrder, @createdAt, @updatedAt",
+        "  @id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt",
         ")",
       ].join("\n"),
     );
@@ -310,3 +364,4 @@ function rowToLink(row: LinkRow): NavLink {
     isActive: Boolean(row.isActive),
   };
 }
+

@@ -18,6 +18,7 @@ type LinkItem = {
   description: string | null;
   icon: string | null;
   isPinned: boolean;
+  categoryId: string;
 };
 
 type CategoryItem = {
@@ -27,6 +28,12 @@ type CategoryItem = {
   icon: string;
   color: string;
   description: string | null;
+  parentId: string | null;
+  children?: Array<{
+    id: string;
+    name: string;
+    icon: string;
+  }>;
   links: LinkItem[];
 };
 
@@ -63,7 +70,13 @@ export function NavigationHome({
         links: category.links.filter((link) => {
           if (!normalizedKeyword) return true;
 
-          return [link.title, link.url, link.description ?? "", category.name]
+          return [
+            link.title,
+            link.url,
+            link.description ?? "",
+            category.name,
+            ...(category.children?.map((child) => child.name) ?? []),
+          ]
             .join(" ")
             .toLowerCase()
             .includes(normalizedKeyword);
@@ -170,16 +183,26 @@ export function NavigationHome({
 
           <div className="mx-auto grid max-w-[1240px] gap-7 md:gap-8">
             {visibleCategories.map((category) => {
-              const tags = getCategoryTags(category.links);
+              const childTags = category.children ?? [];
+              const tags =
+                childTags.length > 0
+                  ? childTags.map((child) => ({
+                      id: child.id,
+                      name: child.name,
+                      count: category.links.filter((link) => link.categoryId === child.id).length,
+                    }))
+                  : getCategoryTags(category.links);
               const selectedTag = activeTags[category.id] ?? "all";
               const activeTag =
-                selectedTag === "all" || tags.some((tag) => tag.name === selectedTag)
+                selectedTag === "all" || tags.some((tag) => tag.id === selectedTag)
                   ? selectedTag
                   : "all";
               const links =
                 activeTag === "all"
                   ? category.links
-                  : category.links.filter((link) => getLinkTag(link) === activeTag);
+                  : childTags.length > 0
+                    ? category.links.filter((link) => link.categoryId === activeTag)
+                    : category.links.filter((link) => getLinkTag(link) === activeTag);
 
               return (
               <section
@@ -203,10 +226,10 @@ export function NavigationHome({
                     </button>
                     {tags.map((tag) => (
                       <button
-                        key={tag.name}
+                        key={tag.id}
                         type="button"
-                        onClick={() => selectCategoryTag(category.id, tag.name)}
-                        className={subTagClass(activeTag === tag.name)}
+                        onClick={() => selectCategoryTag(category.id, tag.id)}
+                        className={subTagClass(activeTag === tag.id)}
                         title={tag.name + " · " + tag.count + " 个"}
                       >
                         {tag.name}
@@ -287,7 +310,7 @@ function getCategoryTags(links: LinkItem[]) {
 
   return [...counts.entries()]
     .filter(([, count]) => count > 1)
-    .map(([name, count]) => ({ name, count }));
+    .map(([name, count]) => ({ id: name, name, count }));
 }
 
 function subTagClass(isActive: boolean) {
