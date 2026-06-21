@@ -212,6 +212,17 @@ export default async function CategoriesAdminPage({
           ) : (
             <p className="border-t border-slate-100 bg-white p-4 text-sm text-slate-500">暂无分类。</p>
           )}
+
+          {Array.from({ length: CATEGORY_PAGE_SIZE - paginatedCategories.length }, (_, i) => (
+            <div
+              key={"placeholder-" + i}
+              className="grid w-full min-w-[1270px] grid-cols-[minmax(150px,1.2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(150px,1.15fr)_56px_76px_64px_minmax(170px,1.35fr)_112px_64px_56px] gap-2 border-t border-transparent bg-white px-2 py-2"
+            >
+              {Array.from({ length: 11 }).map((_, j) => (
+                <div key={j} className="h-9" />
+              ))}
+            </div>
+          ))}
         </div>
 
         <AdminPagination

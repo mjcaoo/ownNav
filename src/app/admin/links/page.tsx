@@ -254,6 +254,17 @@ export default async function LinksAdminPage({
           ) : (
             <p className="border-t border-slate-100 bg-white p-4 text-sm text-slate-500">暂无链接。</p>
           )}
+
+          {Array.from({ length: LINK_PAGE_SIZE - paginatedLinks.length }, (_, i) => (
+            <div
+              key={"placeholder-" + i}
+              className="grid w-full min-w-[1220px] grid-cols-[minmax(150px,1.05fr)_minmax(240px,1.8fr)_minmax(160px,1.05fr)_minmax(180px,1.35fr)_minmax(120px,0.9fr)_64px_112px_64px_56px] gap-2 border-t border-transparent bg-white px-2 py-2"
+            >
+              {Array.from({ length: 9 }).map((_, j) => (
+                <div key={j} className="h-9" />
+              ))}
+            </div>
+          ))}
         </div>
 
         <AdminPagination
