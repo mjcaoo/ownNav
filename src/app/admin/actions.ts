@@ -150,7 +150,7 @@ function normalizeImportUrl(url: string): string {
 function faviconForUrl(url: string) {
   try {
     const { hostname } = new URL(url);
-    return "https://www.google.com/s2/favicons?sz=64&domain=" + hostname;
+    return "https://unavatar.io/" + hostname;
   } catch {
     return null;
   }
@@ -384,7 +384,7 @@ export async function createLink(formData: FormData): Promise<void> {
       url,
       categoryId,
       description: textValue(formData, "description") || null,
-      icon: textValue(formData, "icon") || null,
+      icon: textValue(formData, "icon") || faviconForUrl(url),
       isPinned: formData.get("isPinned") === "on",
       isActive: formData.get("isActive") !== null,
       sortOrder: intValue(formData, "sortOrder"),
@@ -423,7 +423,7 @@ export async function updateLink(formData: FormData): Promise<void> {
       url,
       categoryId,
       description: textValue(formData, "description") || null,
-      icon: textValue(formData, "icon") || null,
+      icon: textValue(formData, "icon") || faviconForUrl(url),
       isPinned: formData.get("isPinned") === "on",
       isActive: formData.get("isActive") === "on",
       sortOrder: intValue(formData, "sortOrder"),
