@@ -200,6 +200,14 @@ export function uniqueSlug(slug: string, categories: Category[], currentId?: str
 
 function getDatabase() {
   if (database) {
+    // 健康检查：数据库文件可能被外部移动/删除，或连接已关闭
+    if (!isDatabaseHealthy(database)) {
+      console.warn("[DB] 数据库连接异常，尝试重新连接...");
+      database = null;
+    }
+  }
+
+  if (database) {
     ensureDatabaseSchema(database);
     return database;
   }
@@ -211,7 +219,18 @@ function getDatabase() {
   ensureDatabaseSchema(database);
   seedDatabaseIfEmpty(database);
 
+  console.log("[DB] 数据库连接已建立:", dbPath);
   return database;
+}
+
+function isDatabaseHealthy(db: Database.Database): boolean {
+  try {
+    // 执行轻量查询验证连接可用
+    db.prepare("SELECT 1 AS health_check").get();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function ensureDatabaseSchema(db: Database.Database) {
@@ -477,5 +496,43 @@ function rowToLink(row: LinkRow): NavLink {
     isPinned: Boolean(row.isPinned),
     isActive: Boolean(row.isActive),
   };
+}
+
+/**
+ * 清空所有数据并用传入数据替换（单事务，用于 JSON 恢复）
+ */
+export function resetAllData(data: NavigationData) {
+  const db = getDatabase();
+  const tx = db.transaction((payload: NavigationData) => {
+    db.prepare("DELETE FROM links").run();
+    db.prepare("DELETE FROM categories").run();
+    db.prepare("DELETE FROM settings").run();
+
+    db.prepare(
+      "INSERT INTO settings (id, title, subtitle, logoText, themeColor) VALUES (@id, @title, @subtitle, @logoText, @themeColor)",
+    ).run(payload.settings);
+
+    const insertCategory = db.prepare(
+      `INSERT INTO categories (id, name, slug, icon, color, description, parentId, sortOrder, createdAt, updatedAt)
+       VALUES (@id, @name, @slug, @icon, @color, @description, @parentId, @sortOrder, @createdAt, @updatedAt)`,
+    );
+    for (const category of payload.categories) {
+      insertCategory.run(category);
+    }
+
+    const insertLink = db.prepare(
+      `INSERT INTO links (id, title, url, description, icon, isPinned, isActive, sortOrder, categoryId, createdAt, updatedAt)
+       VALUES (@id, @title, @url, @description, @icon, @isPinned, @isActive, @sortOrder, @categoryId, @createdAt, @updatedAt)`,
+    );
+    for (const link of payload.links) {
+      insertLink.run({
+        ...link,
+        isPinned: link.isPinned ? 1 : 0,
+        isActive: link.isActive ? 1 : 0,
+      });
+    }
+  });
+
+  tx(data);
 }
 
