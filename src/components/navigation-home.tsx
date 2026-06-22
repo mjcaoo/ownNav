@@ -418,11 +418,18 @@ function CategoryNavButton({
 }
 
 function SiteIcon({ link, color }: { link: LinkItem; color: string }) {
-  if (link.icon) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (link.icon && !imgFailed) {
     return (
       <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50 shadow-sm ring-1 ring-slate-100">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={link.icon} alt="" className="h-5 w-5 rounded object-contain" />
+        <img
+          src={link.icon}
+          alt=""
+          className="h-5 w-5 rounded object-contain"
+          onError={() => setImgFailed(true)}
+        />
       </span>
     );
   }
