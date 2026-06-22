@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   createLink,
   deleteLink,
@@ -7,6 +8,10 @@ import {
 import { AdminModal } from "@/components/admin-modal";
 import { AdminPagination, normalizePageParam, pageCount, pageSlice } from "@/components/admin-pagination";
 import { getLinksWithCategory, readNavigationData, bySortAndCreatedAt, type Category } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "链接管理",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -166,10 +171,13 @@ export default async function LinksAdminPage({
 
                 <div className="flex items-center gap-2">
                   <button type="submit" className="admin-button h-9 flex-1">保存</button>
-                  <form action={deleteLink}>
-                    <input type="hidden" name="id" value={link.id} />
-                    <button type="submit" className="inline-flex h-9 items-center rounded-full px-3 text-xs font-bold text-red-600 transition hover:bg-red-50">删除</button>
-                  </form>
+                  <button
+                    type="submit"
+                    formAction={deleteLink}
+                    className="inline-flex h-9 items-center rounded-full px-3 text-xs font-bold text-red-600 transition hover:bg-red-50"
+                  >
+                    删除
+                  </button>
                 </div>
               </form>
             </div>

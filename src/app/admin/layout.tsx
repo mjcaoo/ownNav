@@ -1,7 +1,13 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { Metadata } from "next";
 import { getSettings } from "@/lib/data";
 import { logoutAdmin } from "./actions";
 import { AdminShell } from "@/components/admin-shell";
+
+export const metadata: Metadata = {
+  title: "管理后台",
+  robots: { index: false, follow: false },
+};
 
 export const dynamic = "force-dynamic";
 

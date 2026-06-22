@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { loginAdmin } from "../actions";
+
+export const metadata: Metadata = {
+  title: "登录",
+};
 
 export default async function LoginPage({
   searchParams,
@@ -16,7 +21,11 @@ export default async function LoginPage({
         </Link>
         <h1 className="mt-6 text-2xl font-bold text-slate-950">登录管理后台</h1>
 
-        {params?.error ? (
+        {params?.error === "rate_limit" ? (
+          <div className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+            登录尝试次数过多，请 15 分钟后再试。
+          </div>
+        ) : params?.error ? (
           <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
             密码不正确，请重新输入。
           </div>

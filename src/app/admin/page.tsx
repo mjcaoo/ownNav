@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getDashboardData } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "仪表盘",
+};
 
 export const dynamic = "force-dynamic";
 

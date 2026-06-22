@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   createCategory,
   deleteCategory,
@@ -7,6 +8,10 @@ import { AdminModal } from "@/components/admin-modal";
 import { AdminPagination, normalizePageParam, pageCount, pageSlice } from "@/components/admin-pagination";
 import { EmojiPicker } from "@/components/emoji-picker";
 import { bySortAndCreatedAt, readNavigationData, type Category } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "分类管理",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +147,7 @@ export default async function CategoriesAdminPage({
 
                 <div className="flex items-center gap-2">
                   <button type="submit" className="admin-button h-9 flex-1">保存</button>
-                  <DeleteButton id={category.id} />
+                  <DeleteButton />
                 </div>
               </form>
             </div>
@@ -238,12 +243,15 @@ export default async function CategoriesAdminPage({
   );
 }
 
-function DeleteButton({ id }: { id: string }) {
+function DeleteButton() {
   return (
-    <form action={deleteCategory}>
-      <input type="hidden" name="id" value={id} />
-      <button type="submit" className="inline-flex h-9 items-center rounded-full px-3 text-xs font-bold text-red-600 transition hover:bg-red-50">删除</button>
-    </form>
+    <button
+      type="submit"
+      formAction={deleteCategory}
+      className="inline-flex h-9 items-center rounded-full px-3 text-xs font-bold text-red-600 transition hover:bg-red-50"
+    >
+      删除
+    </button>
   );
 }
 
